@@ -123,7 +123,7 @@ export default function LoginPage() {
           {step === "code" && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="code">6-digit code</Label>
+                <Label htmlFor="code">Login code</Label>
                 <Input
                   id="code"
                   inputMode="numeric"
