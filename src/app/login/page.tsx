@@ -34,7 +34,7 @@ export default function LoginPage() {
     setLoading(false);
     if (error) return toast({ title: "Couldn't send code", description: error.message, variant: "destructive" });
     setStep("code");
-    toast({ title: "Code sent", description: `Check ${email} for a 6-digit code.` });
+    toast({ title: "Code sent", description: `Check ${email} for a Login code.` });
   }
 
   // Step 2 — verify email OTP. Then decide: enroll TOTP or challenge existing.
@@ -127,8 +127,8 @@ export default function LoginPage() {
                 <Input
                   id="code"
                   inputMode="numeric"
-                  maxLength={6}
-                  placeholder="000000"
+                  maxLength={8}
+                  placeholder="Enter code"
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                   onKeyDown={(e) => e.key === "Enter" && verifyEmailOtp()}
