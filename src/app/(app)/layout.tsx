@@ -1,16 +1,13 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/supabase-server";
+import { getCurrentUser } from "@/lib/auth";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { ApplyTheme } from "@/components/apply-theme";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
-
-  // Not logged in, or no profile yet → back to login
   if (!user) redirect("/login");
 
-  // Account disabled by an admin
   if (!user.isActive && !user.isSuperadmin) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6 text-center">

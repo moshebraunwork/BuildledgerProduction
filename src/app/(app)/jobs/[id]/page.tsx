@@ -1,48 +1,42 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/guard";
-import { createClient, getCurrentUser } from "@/lib/supabase-server";
+import { sql } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { JobDetail } from "./job-detail";
 
-export default async function JobDetailPage({ params }: { params: { id: string } }) {
+export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: jobId } = await params; // Next 15: params is async
   const user = await requirePermission("jobs.view");
-  const supabase = createClient();
-  const jobId = params.id;
 
-  const { data: job } = await supabase.from("jobs").select("*").eq("id", jobId).single();
-  if (!job) notFound();
+  const jobRows = await sql`select * from public.jobs where id = ${jobId} and company_id = ${user.companyId} limit 1`;
+  if (!jobRows.length) notFound();
+  const job = jobRows[0];
 
-  const [
-    { data: crew },
-    { data: allWorkers },
-    { data: jobItems },
-    { data: catalog },
-    { data: costs },
-    { data: punches },
-    { data: company },
-    { data: existingInvoices },
-  ] = await Promise.all([
-    supabase.from("job_workers").select("worker_id, workers(id, name, role_title, pay_rate, require_punch_photo)").eq("job_id", jobId),
-    supabase.from("workers").select("id, name, role_title, pay_rate, require_punch_photo").order("name"),
-    supabase.from("job_items").select("*").eq("job_id", jobId),
-    supabase.from("items").select("*").order("name"),
-    supabase.from("job_costs").select("*").eq("job_id", jobId),
-    supabase.from("punches").select("*").eq("job_id", jobId).order("started_at", { ascending: false }),
-    supabase.from("companies").select("*").eq("id", user.companyId).single(),
-    supabase.from("invoices").select("id, number, status, total, created_at").eq("job_id", jobId).order("created_at", { ascending: false }),
+  const [crewRows, allWorkers, jobItems, catalog, costs, punches, companyRows, existingInvoices] = await Promise.all([
+    sql`select w.id, w.name, w.role_title, w.pay_rate, w.require_punch_photo
+        from public.job_workers jw join public.workers w on w.id = jw.worker_id
+        where jw.job_id = ${jobId}`,
+    sql`select id, name, role_title, pay_rate, require_punch_photo from public.workers
+        where company_id = ${user.companyId} order by name`,
+    sql`select * from public.job_items where job_id = ${jobId}`,
+    sql`select * from public.items where company_id = ${user.companyId} order by name`,
+    sql`select * from public.job_costs where job_id = ${jobId}`,
+    sql`select * from public.punches where job_id = ${jobId} order by started_at desc`,
+    sql`select * from public.companies where id = ${user.companyId} limit 1`,
+    sql`select id, number, status, total, created_at from public.invoices where job_id = ${jobId} order by created_at desc`,
   ]);
 
   return (
     <JobDetail
-      job={job}
-      crew={(crew ?? []).map((c: any) => c.workers).filter(Boolean)}
-      allWorkers={allWorkers ?? []}
-      jobItems={jobItems ?? []}
-      catalog={catalog ?? []}
-      costs={costs ?? []}
-      punches={punches ?? []}
-      company={company}
-      invoices={existingInvoices ?? []}
+      job={job as any}
+      crew={crewRows as any[]}
+      allWorkers={allWorkers as any[]}
+      jobItems={jobItems as any[]}
+      catalog={catalog as any[]}
+      costs={costs as any[]}
+      punches={punches as any[]}
+      company={(companyRows as any[])[0] ?? null}
+      invoices={existingInvoices as any[]}
       companyId={user.companyId}
       perms={{
         edit: can(user.isSuperadmin, user.permissions, "jobs.edit"),

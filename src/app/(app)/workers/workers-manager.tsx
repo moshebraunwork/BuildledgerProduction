@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { createClient } from "@/lib/supabase-browser";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,75 +12,48 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney } from "@/lib/utils";
 import { Plus, Pencil, Trash2, Camera } from "lucide-react";
+import { createWorker, updateWorker, deleteWorker } from "./actions";
 
 interface Worker {
-  id: string;
-  name: string;
-  role_title: string | null;
-  phone: string | null;
-  pay_rate: number;
-  require_punch_photo: boolean;
+  id: string; name: string; role_title: string | null; phone: string | null;
+  pay_rate: number; require_punch_photo: boolean;
 }
 
 const blank = { name: "", role_title: "", phone: "", pay_rate: 0, require_punch_photo: false };
 
 export function WorkersManager({
-  initialWorkers,
-  canEdit,
-  canDelete,
-  companyId,
+  initialWorkers, canEdit, canDelete,
 }: {
-  initialWorkers: Worker[];
-  canEdit: boolean;
-  canDelete: boolean;
-  companyId: string;
+  initialWorkers: Worker[]; canEdit: boolean; canDelete: boolean;
 }) {
-  const supabase = createClient();
   const { toast } = useToast();
   const [workers, setWorkers] = React.useState<Worker[]>(initialWorkers);
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Worker | null>(null);
   const [form, setForm] = React.useState<typeof blank>(blank);
 
-  function startNew() {
-    setEditing(null);
-    setForm(blank);
-    setOpen(true);
-  }
+  function startNew() { setEditing(null); setForm(blank); setOpen(true); }
   function startEdit(w: Worker) {
     setEditing(w);
-    setForm({
-      name: w.name,
-      role_title: w.role_title ?? "",
-      phone: w.phone ?? "",
-      pay_rate: w.pay_rate,
-      require_punch_photo: w.require_punch_photo,
-    });
+    setForm({ name: w.name, role_title: w.role_title ?? "", phone: w.phone ?? "", pay_rate: w.pay_rate, require_punch_photo: w.require_punch_photo });
     setOpen(true);
   }
 
   async function save() {
     if (!form.name.trim()) return toast({ title: "Name required", variant: "destructive" });
     const payload = {
-      name: form.name.trim(),
-      role_title: form.role_title || null,
-      phone: form.phone || null,
-      pay_rate: Number(form.pay_rate),
-      require_punch_photo: form.require_punch_photo,
+      name: form.name.trim(), role_title: form.role_title || null, phone: form.phone || null,
+      pay_rate: Number(form.pay_rate), require_punch_photo: form.require_punch_photo,
     };
     if (editing) {
-      const { error } = await supabase.from("workers").update(payload).eq("id", editing.id);
-      if (error) return toast({ title: "Save failed", description: error.message, variant: "destructive" });
+      const res = await updateWorker(editing.id, payload);
+      if (res.error) return toast({ title: "Save failed", description: res.error, variant: "destructive" });
       setWorkers((ws) => ws.map((x) => (x.id === editing.id ? { ...x, ...payload } : x)));
       toast({ title: "Worker updated" });
     } else {
-      const { data, error } = await supabase
-        .from("workers")
-        .insert({ ...payload, company_id: companyId })
-        .select()
-        .single();
-      if (error) return toast({ title: "Create failed", description: error.message, variant: "destructive" });
-      setWorkers((ws) => [...ws, data as Worker]);
+      const res = await createWorker(payload);
+      if (res.error) return toast({ title: "Create failed", description: res.error, variant: "destructive" });
+      setWorkers((ws) => [...ws, res.data as Worker]);
       toast({ title: "Worker added" });
     }
     setOpen(false);
@@ -89,30 +61,23 @@ export function WorkersManager({
 
   async function remove(w: Worker) {
     if (!confirm(`Remove "${w.name}" from the crew?`)) return;
-    const { error } = await supabase.from("workers").delete().eq("id", w.id);
-    if (error) return toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+    const res = await deleteWorker(w.id);
+    if (res.error) return toast({ title: "Delete failed", description: res.error, variant: "destructive" });
     setWorkers((ws) => ws.filter((x) => x.id !== w.id));
     toast({ title: "Worker removed" });
   }
 
   return (
     <>
-      {canEdit && (
-        <div className="mb-4 flex justify-end">
-          <Button onClick={startNew}><Plus className="h-4 w-4" /> Add worker</Button>
-        </div>
-      )}
+      {canEdit && <div className="mb-4 flex justify-end"><Button onClick={startNew}><Plus className="h-4 w-4" /> Add worker</Button></div>}
 
       <Card>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Pay rate</TableHead>
-                <TableHead>Photo required</TableHead>
+                <TableHead>Name</TableHead><TableHead>Role</TableHead><TableHead>Phone</TableHead>
+                <TableHead>Pay rate</TableHead><TableHead>Photo required</TableHead>
                 {(canEdit || canDelete) && <TableHead></TableHead>}
               </TableRow>
             </TableHeader>
@@ -124,11 +89,7 @@ export function WorkersManager({
                   <TableCell className="text-sm">{w.phone ?? "—"}</TableCell>
                   <TableCell>{fmtMoney(w.pay_rate)}/hr</TableCell>
                   <TableCell>
-                    {w.require_punch_photo ? (
-                      <Badge variant="secondary" className="gap-1"><Camera className="h-3 w-3" /> Required</Badge>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">No</span>
-                    )}
+                    {w.require_punch_photo ? <Badge variant="secondary" className="gap-1"><Camera className="h-3 w-3" /> Required</Badge> : <span className="text-sm text-muted-foreground">No</span>}
                   </TableCell>
                   {(canEdit || canDelete) && (
                     <TableCell className="text-right whitespace-nowrap">
@@ -138,9 +99,7 @@ export function WorkersManager({
                   )}
                 </TableRow>
               ))}
-              {workers.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">No workers yet.</TableCell></TableRow>
-              )}
+              {workers.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">No workers yet.</TableCell></TableRow>}
             </TableBody>
           </Table>
         </CardContent>
@@ -157,10 +116,7 @@ export function WorkersManager({
             </div>
             <div className="space-y-2"><Label>Pay rate ($/hr)</Label><Input type="number" value={form.pay_rate} onChange={(e) => setForm({ ...form, pay_rate: +e.target.value })} /></div>
             <div className="flex items-center justify-between rounded-md border p-3">
-              <div>
-                <div className="text-sm font-medium">Require photo with punches</div>
-                <div className="text-xs text-muted-foreground">This worker must attach a photo when punching in.</div>
-              </div>
+              <div><div className="text-sm font-medium">Require photo with punches</div><div className="text-xs text-muted-foreground">This worker must attach a photo when punching in.</div></div>
               <Switch checked={form.require_punch_photo} onCheckedChange={(v) => setForm({ ...form, require_punch_photo: v })} />
             </div>
           </div>

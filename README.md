@@ -1,136 +1,77 @@
-# BuildLedger — Setup & Deployment Guide
+# BuildLedger — Setup & Deployment (Neon + Clerk + Cloudflare R2)
 
-A production construction-management app: jobs, crew & live time tracking, inventory, billing, and emailed invoices. Built with Next.js (App Router) + TypeScript, Supabase (Postgres + Auth), shadcn/ui, and Resend.
+Construction management app: jobs, crew & live time tracking (with photo punches), inventory, billing, and emailed invoices. Built with Next.js 15 + TypeScript, Neon Postgres, Clerk (auth), Cloudflare R2 (file storage), shadcn/ui, and Resend (invoice email).
 
-This guide takes you from zip to a live, hosted app. Budget about 20–30 minutes the first time.
+This is the migrated stack. The app previously ran on Supabase; see MIGRATION_PLAN.md for the full history and rationale.
 
----
+## What you need (all have free tiers)
 
-## What you'll need (free tiers are fine)
+1. Node.js 18.18+ (20 or 22 recommended)
+2. Neon account — https://neon.tech (Postgres, 10 GB free)
+3. Clerk account — https://clerk.com (auth; email OTP free, TOTP 2FA needs a paid plan in production)
+4. Cloudflare R2 — https://dash.cloudflare.com (file storage, 10 GB free)
+5. Resend account — https://resend.com (invoice email)
 
-1. **Node.js 18.17+** (Node 20 or 22 recommended) — https://nodejs.org
-2. **A Supabase account** — https://supabase.com (database + auth)
-3. **A Resend account** — https://resend.com (sends OTP + invoice emails)
-4. **A Vercel account** — https://vercel.com (hosting) — optional; you can host anywhere that runs Next.js
+## Step 1 — Install & configure
 
----
+    npm install
+    cp .env.example .env.local      (Windows: copy .env.example .env.local)
 
-## Step 1 — Install and run locally
+Fill every value in .env.local (see that file's comments for where each comes from).
 
-```bash
-cd buildledger
-npm install
-cp .env.example .env.local   # then fill in the values (Step 3)
-npm run dev
-```
+## Step 2 — Database (Neon)
 
-Open http://localhost:3000. It will redirect to `/login` (nothing works until you finish the env + database steps below).
+1. Create a Neon project; copy its pooled DATABASE_URL into .env.local.
+2. In the Neon SQL editor, run the two files in supabase/migrations_neon/ in order:
+   - 0001_init.sql — all tables (no Supabase RLS; users.clerk_user_id links to Clerk; punch note/photo columns included)
+   - 0002_seed.sql — company, built-in Administrator role, sample data
 
----
+## Step 3 — Auth (Clerk)
 
-## Step 2 — Create the Supabase project & database
+1. Create a Clerk application. Under User & Authentication -> Email, Phone, Username, enable Email address with Email verification code.
+2. (Optional, paid in production) Multi-factor -> Authenticator application (TOTP) to add 2FA. Free on Clerk dev instances; requires a paid plan on production. See MIGRATION_PLAN.md "2FA DEFERRED" note.
+3. Copy the publishable + secret keys into .env.local.
+4. In Clerk -> Paths, set sign-in URL to /login.
 
-1. In Supabase, click **New project**. Pick a name and a strong database password. Wait ~2 min for it to provision.
-2. Go to **SQL Editor** → **New query**. Open the files in `supabase/migrations/` from this project **in order** and run each one:
-   - `0001_init.sql` — all tables, row-level security, the permissions model
-   - `0002_seed.sql` — the company, the built-in **Administrator** role, and a little sample data
-   - `0003_punch_photos.sql` — punch notes/photos + the storage bucket for photos
-   Paste each file's contents, click **Run**, confirm "Success". Do them one at a time, in number order.
-3. **Enable multi-factor auth (the authenticator app step):**
-   Go to **Authentication → Providers / Sign In** settings and make sure **Email** is enabled. Then under **Authentication → Multi-Factor**, enable **TOTP (Authenticator app)**.
-   > Note: Supabase's free plan supports TOTP enrollment. Enforcing MFA across all users / advanced MFA policies may require their Pro plan — but the app's own login flow already requires every user to set up an authenticator, so you get 2FA regardless.
+## Step 4 — File storage (Cloudflare R2)
 
----
+1. Create an R2 bucket named buildledger-photos.
+2. Enable public access on the bucket -> gives you the pub-xxxx.r2.dev URL -> R2_PUBLIC_URL.
+3. Create an R2 API token (Object Read & Write) -> R2_ACCESS_KEY_ID + R2_SECRET_ACCESS_KEY. Account ID is in the dashboard -> R2_ACCOUNT_ID.
 
-## Step 3 — Fill in your environment variables
+## Step 5 — Email (Resend)
 
-In Supabase, go to **Project Settings → API**. Copy these into `.env.local`:
+Verify your domain in Resend (DNS records), create an API key -> RESEND_API_KEY, and set INVOICE_FROM_EMAIL to an address on the verified domain.
 
-```
-NEXT_PUBLIC_SUPABASE_URL=...        # "Project URL"
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...   # "anon / public" key
-SUPABASE_SERVICE_ROLE_KEY=...       # "service_role" key — KEEP SECRET, server-only
-```
+## Step 6 — Run
 
-From Resend (**API Keys**):
-```
-RESEND_API_KEY=re_...
-INVOICE_FROM_EMAIL=invoices@yourdomain.com   # must be on a domain you verify in Resend
-```
+    npm run build
+    npm run start       (or: npm run dev  for local development)
 
-And set your own email as the built-in super-admin (this account always has full access and can never be locked out):
-```
-SUPPORT_ADMIN_EMAIL=you@yourdomain.com
-```
+First sign-in with the email you set as SUPPORT_ADMIN_EMAIL automatically makes that account the superadmin. Everyone else signs in and waits for an admin to assign them a role + mark them active under Admin -> Users.
 
-> **Resend domain note:** to send to real customers, verify your sending domain in Resend (**Domains → Add Domain**, then add the DNS records). Until then, Resend only lets you send test emails to your own verified address.
+## Deploy on your VM (current production: workstock.mobrauntech.com)
 
----
+This app runs behind nginx + PM2 on the Ubuntu VM. To update:
 
-## Step 4 — First login (becoming the admin)
+    cd ~/BuildledgerProduction
+    git pull
+    npm install
+    npm run build
+    pm2 restart buildledger
 
-1. With `.env.local` filled in, restart `npm run dev`.
-2. Go to `/login`, enter the **same email** you set as `SUPPORT_ADMIN_EMAIL`.
-3. You'll get a 6-digit code by email — enter it.
-4. Because there's no authenticator on your account yet, you'll be sent to set one up: scan the QR with Google Authenticator (or any TOTP app) and enter the code.
-5. You're in — as the super-admin with every permission.
+Make sure the VM's .env.local has all the new keys above. In Clerk, add your production domain (workstock.mobrauntech.com) to the allowed origins, and when ready switch Clerk from a Development to a Production instance (new pk_live_/sk_live_ keys).
 
-**How everyone else gets access:** when a new person signs in for the first time, their account is created **inactive** with no role. You (admin) go to **Admin → Users**, give them a role, and flip them **Active**. Nobody can get in by self-signup alone — you control the gate.
+## Architecture notes
 
----
-
-## Step 5 — Set up roles (the permissions system)
-
-Go to **Admin → Roles**. There's a built-in **Administrator** role (can't be deleted). Click **New role** to create your own — name it (e.g. "Office", "Foreman") and tick exactly which permissions it gets. Then assign people to roles in **Admin → Users**. Permissions cover every module: jobs, inventory, workers, invoices, time tracking, admin, and the activity log.
-
----
-
-## Step 6 — Deploy to Vercel
-
-1. Push this project to a GitHub repo.
-2. In Vercel: **Add New → Project**, import the repo.
-3. Under **Environment Variables**, add the **same** keys from your `.env.local` (all six).
-4. Deploy. Vercel gives you a URL.
-5. In Supabase → **Authentication → URL Configuration**, add your Vercel URL to **Site URL** and **Redirect URLs** so email links resolve correctly.
-
-That's it — you're live.
-
----
-
-## How the app fits together (quick map)
-
-- **Dashboard** — live counts: jobs, inventory, low stock, workers, invoiced totals.
-- **Jobs** — list + create. Open a job for the real work:
-  - **Time & Crew** — assign crew, **Punch In / Store Run / Clock Out** with live timers. Punches are saved to the backend; each can carry a **note** and a **photo**. Photos can be **required** per worker (Workers page) and/or per job — if either requires it, the punch-in demands a photo.
-  - **Items & Costs** — add catalog items to the job (this draws down inventory stock), plus one-time costs. Checkboxes control what lands on the invoice.
-  - **Billing & Invoice** — itemized or per-hour billing (per-hour can exclude store-run time), generate an invoice, **download a PDF**, and **email it** to the customer.
-- **Inventory** — your reusable catalog with cost/charge/markup, stock, and low-stock warnings.
-- **Workers** — crew, pay rates, and the per-worker "require photo" toggle.
-- **Invoices** — every invoice across all jobs; view, PDF, or send.
-- **Admin → Users / Roles** — control access.
-- **Activity Log** — an audit trail of who did what, when.
-- **Settings** — your theme (system/light/dark) and, for admins, company + invoice defaults (name, from-address, default rate, tax rate).
-
----
-
-## Editing logged time
-
-Punch records live in the `punches` table. Anyone with the **"Punch in/out & time tracking"** permission can manage them. The schema already supports admin corrections (there are `edited_by` / `edited_at` columns and notes). A dedicated "edit past punch" UI is a natural next addition if you want in-app editing beyond the current punch flow — the data model is ready for it.
-
----
-
-## Security notes
-
-- Every table is protected by **row-level security** and scoped to a company.
-- The **service-role key** is only ever used in server code (never shipped to the browser). Keep it secret.
-- The app is built multi-company-ready (every record has a `company_id`) but ships configured for your single client — there's just one company row and no multi-company UI.
-- This project pins **Next.js 14.2.33**, which patches the advisory flagged at build time. `npm audit` may still list older 14.x CVEs that only fully clear by upgrading to Next 16 (a major version change). For a self-hosted internal tool behind authentication, staying on patched 14.x is a reasonable, stable choice; upgrading to 16 later is possible but is a migration, not a drop-in.
-
----
+- All database access is server-side. Client components call server actions (the actions.ts file in each feature folder) or API routes — never the database directly. The Neon connection string is secret and never reaches the browser. Company scoping is enforced in every query (where company_id = ...).
+- Auth flow: Clerk authenticates the user; src/lib/auth.ts then loads (or bootstraps) that user's profile + role permissions from Neon. The permission catalog in src/lib/permissions.ts is unchanged from the original design.
+- Photos: punch photos upload via POST /api/upload -> Cloudflare R2 -> public URL stored on the punch row.
+- Invoices: generated as a row with a line-item snapshot, downloadable as PDF (client-side jsPDF), and emailed via Resend through POST /api/invoices/send.
 
 ## Troubleshooting
 
-- **"Email is not configured" when sending an invoice** → `RESEND_API_KEY` or `INVOICE_FROM_EMAIL` missing, or the from-domain isn't verified in Resend.
-- **Can't receive the login code** → check spam; confirm Email auth is on in Supabase; in dev, Supabase may rate-limit — wait a minute.
-- **"Account pending" after logging in** → expected for non-admin users until an admin assigns a role and marks them active.
-- **Photos won't upload** → confirm `0003_punch_photos.sql` ran (it creates the `punch-photos` storage bucket and its policies).
+- Build fails referencing supabase -> a file wasn't migrated; grep -rl supabase src/ should return nothing.
+- "Account pending" after login -> expected for non-admins until an admin activates them. For the superadmin, confirm SUPPORT_ADMIN_EMAIL matches your login email exactly.
+- Photo upload fails -> check R2 keys and that the bucket has public access enabled.
+- Invoice email fails -> check Resend domain verification and INVOICE_FROM_EMAIL.

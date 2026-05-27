@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { createClient } from "@/lib/supabase-browser";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

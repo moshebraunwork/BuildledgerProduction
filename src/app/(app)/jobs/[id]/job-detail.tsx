@@ -1,7 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { createClient } from "@/lib/supabase-browser";
+import {
+  addCrew as addCrewAction, removeCrew as removeCrewAction,
+  punchIn as punchInAction, punchOut as punchOutAction,
+  addJobItem as addJobItemAction, removeJobItem as removeJobItemAction, setJobItemExcluded,
+  addJobCost as addJobCostAction, removeJobCost as removeJobCostAction, setJobCostExcluded,
+  generateInvoice as generateInvoiceAction, setJobStatus,
+} from "./actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,7 +54,6 @@ export function JobDetail(props: {
   companyId: string;
   perms: Perms;
 }) {
-  const supabase = createClient();
   const { toast } = useToast();
 
   const [job, setJob] = React.useState<Job>(props.job);
@@ -71,13 +76,13 @@ export function JobDetail(props: {
   async function addCrew(workerId: string) {
     const worker = props.allWorkers.find((w) => w.id === workerId);
     if (!worker) return;
-    const { error } = await supabase.from("job_workers").insert({ job_id: job.id, worker_id: workerId });
-    if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
+    const res = await addCrewAction(job.id, workerId);
+    if (res.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
     setCrew((c) => [...c, worker]);
   }
   async function removeCrew(workerId: string) {
-    const { error } = await supabase.from("job_workers").delete().eq("job_id", job.id).eq("worker_id", workerId);
-    if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
+    const res = await removeCrewAction(job.id, workerId);
+    if (res.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
     setCrew((c) => c.filter((w) => w.id !== workerId));
   }
 
@@ -109,14 +114,16 @@ export function JobDetail(props: {
 
   async function uploadPhoto(): Promise<string | null> {
     if (!punchFile) return null;
-    const path = `${job.id}/${crypto.randomUUID()}-${punchFile.name}`;
-    const { error } = await supabase.storage.from("punch-photos").upload(path, punchFile);
-    if (error) {
-      toast({ title: "Photo upload failed", description: error.message, variant: "destructive" });
-      throw error;
+    const fd = new FormData();
+    fd.append("file", punchFile);
+    fd.append("prefix", `punch-photos/${job.id}`);
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    const json = await res.json();
+    if (!res.ok) {
+      toast({ title: "Photo upload failed", description: json.error, variant: "destructive" });
+      throw new Error(json.error);
     }
-    const { data } = supabase.storage.from("punch-photos").getPublicUrl(path);
-    return data.publicUrl;
+    return json.url as string;
   }
 
   async function confirmPunch() {
@@ -130,31 +137,15 @@ export function JobDetail(props: {
     try {
       const photoUrl = await uploadPhoto();
       if (mode === "in") {
-        const { data, error } = await supabase
-          .from("punches")
-          .insert({
-            company_id: props.companyId,
-            job_id: job.id,
-            worker_id: worker.id,
-            kind,
-            note: punchNote || null,
-            started_photo_url: photoUrl,
-          })
-          .select()
-          .single();
-        if (error) throw error;
-        setPunches((p) => [data as Punch, ...p]);
-        // auto-activate the job on first punch
-        if (job.status === "scheduled") {
-          await supabase.from("jobs").update({ status: "active" }).eq("id", job.id);
-          setJob((j) => ({ ...j, status: "active" }));
-        }
+        const res = await punchInAction({
+          jobId: job.id, workerId: worker.id, kind, note: punchNote || null, photoUrl,
+        });
+        if (res.error) throw new Error(res.error);
+        setPunches((p) => [res.data as Punch, ...p]);
+        if (job.status === "scheduled") setJob((j) => ({ ...j, status: "active" }));
       } else {
-        const { error } = await supabase
-          .from("punches")
-          .update({ ended_at: new Date().toISOString(), note: punchNote || null, ended_photo_url: photoUrl })
-          .eq("id", punchId!);
-        if (error) throw error;
+        const res = await punchOutAction({ punchId: punchId!, note: punchNote || null, photoUrl });
+        if (res.error) throw new Error(res.error);
         setPunches((p) =>
           p.map((x) => (x.id === punchId ? { ...x, ended_at: new Date().toISOString(), note: punchNote || null, ended_photo_url: photoUrl } : x))
         );
@@ -191,28 +182,25 @@ export function JobDetail(props: {
   async function addItem() {
     const cat = props.catalog.find((c) => c.id === pickItem);
     if (!cat) return;
-    const { data, error } = await supabase
-      .from("job_items")
-      .insert({ job_id: job.id, item_id: cat.id, name: cat.name, qty: pickQty, cost: cat.cost, charge: cat.charge })
-      .select()
-      .single();
-    if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
-    // draw down stock
-    await supabase.from("items").update({ stock: Math.max(0, cat.stock - pickQty) }).eq("id", cat.id);
-    setJobItems((it) => [...it, data as JobItem]);
+    const res = await addJobItemAction({
+      jobId: job.id, itemId: cat.id, name: cat.name, qty: pickQty,
+      cost: cat.cost, charge: cat.charge, currentStock: cat.stock,
+    });
+    if (res.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
+    setJobItems((it) => [...it, res.data as JobItem]);
     setItemDialog(false);
     setPickItem("");
     setPickQty(1);
     toast({ title: "Item added", description: `${pickQty} × ${cat.name} (stock reduced)` });
   }
   async function removeItem(it: JobItem) {
-    const { error } = await supabase.from("job_items").delete().eq("id", it.id);
-    if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
+    const res = await removeJobItemAction(it.id);
+    if (res.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
     setJobItems((arr) => arr.filter((x) => x.id !== it.id));
   }
   async function toggleItemExcluded(it: JobItem) {
     const next = !it.excluded;
-    await supabase.from("job_items").update({ excluded: next }).eq("id", it.id);
+    await setJobItemExcluded(it.id, next);
     setJobItems((arr) => arr.map((x) => (x.id === it.id ? { ...x, excluded: next } : x)));
   }
 
@@ -221,23 +209,19 @@ export function JobDetail(props: {
   const [costForm, setCostForm] = React.useState({ label: "", cost: 0, charge: 0 });
   async function addCost() {
     if (!costForm.label.trim()) return;
-    const { data, error } = await supabase
-      .from("job_costs")
-      .insert({ job_id: job.id, label: costForm.label.trim(), cost: costForm.cost, charge: costForm.charge })
-      .select()
-      .single();
-    if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
-    setCosts((c) => [...c, data as JobCost]);
+    const res = await addJobCostAction({ jobId: job.id, label: costForm.label.trim(), cost: costForm.cost, charge: costForm.charge });
+    if (res.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
+    setCosts((c) => [...c, res.data as JobCost]);
     setCostDialog(false);
     setCostForm({ label: "", cost: 0, charge: 0 });
   }
   async function removeCost(c: JobCost) {
-    await supabase.from("job_costs").delete().eq("id", c.id);
+    await removeJobCostAction(c.id);
     setCosts((arr) => arr.filter((x) => x.id !== c.id));
   }
   async function toggleCostExcluded(c: JobCost) {
     const next = !c.excluded;
-    await supabase.from("job_costs").update({ excluded: next }).eq("id", c.id);
+    await setJobCostExcluded(c.id, next);
     setCosts((arr) => arr.map((x) => (x.id === c.id ? { ...x, excluded: next } : x)));
   }
 
@@ -280,27 +264,20 @@ export function JobDetail(props: {
   const [generating, setGenerating] = React.useState(false);
   async function generateInvoice() {
     setGenerating(true);
-    const number = `INV-${Date.now().toString().slice(-6)}`;
-    const { data, error } = await supabase
-      .from("invoices")
-      .insert({
-        company_id: props.companyId,
-        job_id: job.id,
-        number,
-        customer_name: job.customer_name,
-        customer_email: job.customer_email,
-        subtotal: billing.subtotal,
-        tax: billing.tax,
-        total: billing.total,
-        line_items: billing.lines,
-        status: "draft",
-      })
-      .select()
-      .single();
+    const res = await generateInvoiceAction({
+      jobId: job.id,
+      customerName: job.customer_name,
+      customerEmail: job.customer_email,
+      subtotal: billing.subtotal,
+      tax: billing.tax,
+      total: billing.total,
+      lineItems: billing.lines,
+    });
     setGenerating(false);
-    if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
-    setInvoices((inv) => [{ id: data.id, number, status: "draft", total: billing.total, created_at: data.created_at }, ...inv]);
-    toast({ title: "Invoice generated", description: number });
+    if (res.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
+    const d = res.data as any;
+    setInvoices((inv) => [{ id: d.id, number: d.number, status: "draft", total: billing.total, created_at: d.created_at }, ...inv]);
+    toast({ title: "Invoice generated", description: d.number });
   }
 
   async function sendInvoice(invoiceId: string) {
@@ -358,7 +335,7 @@ export function JobDetail(props: {
           <Button
             variant="outline"
             onClick={async () => {
-              await supabase.from("jobs").update({ status: "complete" }).eq("id", job.id);
+              await setJobStatus(job.id, "complete");
               setJob((j) => ({ ...j, status: "complete" }));
               toast({ title: "Job marked complete" });
             }}

@@ -1,7 +1,6 @@
-import { createServiceClient } from "./supabase-server";
+import { sql } from "./db";
 
-// Writes an entry to the audit log. Fire-and-forget friendly; never throws into
-// the caller's flow (logging must not break the actual operation).
+// Writes an entry to the audit log. Never throws into the caller's flow.
 export async function audit(params: {
   companyId: string | null;
   actorId: string | null;
@@ -12,16 +11,18 @@ export async function audit(params: {
   detail?: Record<string, unknown>;
 }) {
   try {
-    const svc = createServiceClient();
-    await svc.from("audit_log").insert({
-      company_id: params.companyId,
-      actor_id: params.actorId,
-      actor_email: params.actorEmail,
-      action: params.action,
-      entity: params.entity ?? null,
-      entity_id: params.entityId ?? null,
-      detail: params.detail ?? null,
-    });
+    await sql`
+      insert into public.audit_log (company_id, actor_id, actor_email, action, entity, entity_id, detail)
+      values (
+        ${params.companyId},
+        ${params.actorId},
+        ${params.actorEmail},
+        ${params.action},
+        ${params.entity ?? null},
+        ${params.entityId ?? null},
+        ${params.detail ? JSON.stringify(params.detail) : null}
+      )
+    `;
   } catch (e) {
     console.error("audit log write failed", e);
   }

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { createClient } from "@/lib/supabase-browser";
+import { useClerk } from "@clerk/nextjs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,23 +15,20 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Monitor, Moon, Sun, LogOut, User } from "lucide-react";
+import { saveTheme } from "@/app/(app)/actions";
 
 export function Topbar({ email, fullName }: { email: string; fullName: string | null }) {
   const router = useRouter();
-  const supabase = createClient();
   const { setTheme } = useTheme();
+  const { signOut } = useClerk();
 
   async function persistTheme(theme: string) {
     setTheme(theme);
-    // best-effort save to profile so it follows the user across devices
-    const { data } = await supabase.auth.getUser();
-    if (data.user) await supabase.from("users").update({ theme }).eq("id", data.user.id);
-  }
-
-  async function signOut() {
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+    try {
+      await saveTheme(theme);
+    } catch {
+      /* non-critical */
+    }
   }
 
   const initials = (fullName || email).slice(0, 2).toUpperCase();
@@ -78,7 +75,7 @@ export function Topbar({ email, fullName }: { email: string; fullName: string | 
           <DropdownMenuItem onClick={() => router.push("/settings")}>
             <User className="h-4 w-4" /> Settings
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={signOut}>
+          <DropdownMenuItem onClick={() => signOut({ redirectUrl: "/login" })}>
             <LogOut className="h-4 w-4" /> Sign out
           </DropdownMenuItem>
         </DropdownMenuContent>

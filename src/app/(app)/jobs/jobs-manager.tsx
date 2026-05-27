@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase-browser";
+import { createJob } from "./actions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,13 +35,10 @@ const statusVariant: Record<string, "secondary" | "default" | "success"> = {
 export function JobsManager({
   initialJobs,
   canEdit,
-  companyId,
 }: {
   initialJobs: Job[];
   canEdit: boolean;
-  companyId: string;
 }) {
-  const supabase = createClient();
   const { toast } = useToast();
   const [jobs, setJobs] = React.useState<Job[]>(initialJobs);
   const [open, setOpen] = React.useState(false);
@@ -57,23 +54,17 @@ export function JobsManager({
 
   async function create() {
     if (!form.title.trim()) return toast({ title: "Title required", variant: "destructive" });
-    const { data, error } = await supabase
-      .from("jobs")
-      .insert({
-        company_id: companyId,
-        title: form.title.trim(),
-        place: form.place || null,
-        scheduled_date: form.scheduled_date || null,
-        customer_name: form.customer_name || null,
-        customer_email: form.customer_email || null,
-        estimate: Number(form.estimate),
-        billing_mode: form.billing_mode,
-        status: "scheduled",
-      })
-      .select()
-      .single();
-    if (error) return toast({ title: "Create failed", description: error.message, variant: "destructive" });
-    setJobs((j) => [data as Job, ...j]);
+    const res = await createJob({
+      title: form.title.trim(),
+      place: form.place || null,
+      scheduled_date: form.scheduled_date || null,
+      customer_name: form.customer_name || null,
+      customer_email: form.customer_email || null,
+      estimate: Number(form.estimate),
+      billing_mode: form.billing_mode,
+    });
+    if (res.error) return toast({ title: "Create failed", description: res.error, variant: "destructive" });
+    setJobs((j) => [res.data as Job, ...j]);
     setOpen(false);
     setForm({ title: "", place: "", scheduled_date: "", customer_name: "", customer_email: "", estimate: 0, billing_mode: "itemized" });
     toast({ title: "Job created" });

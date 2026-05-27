@@ -1,31 +1,30 @@
 import { requirePermission } from "@/lib/guard";
-import { createClient } from "@/lib/supabase-server";
+import { sql } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtMoney } from "@/lib/utils";
 import { Hammer, Boxes, Users, FileText } from "lucide-react";
 
 export default async function DashboardPage() {
-  await requirePermission("dashboard.view");
-  const supabase = createClient();
+  const user = await requirePermission("dashboard.view");
+  const cid = user.companyId;
 
-  const [{ count: jobCount }, { count: activeCount }, { data: items }, { count: workerCount }, { data: invoices }] =
-    await Promise.all([
-      supabase.from("jobs").select("*", { count: "exact", head: true }),
-      supabase.from("jobs").select("*", { count: "exact", head: true }).eq("status", "active"),
-      supabase.from("items").select("stock, low_threshold"),
-      supabase.from("workers").select("*", { count: "exact", head: true }),
-      supabase.from("invoices").select("total, status"),
-    ]);
+  const [jobsCount, activeCount, items, workersCount, invoices] = await Promise.all([
+    sql`select count(*)::int as n from public.jobs where company_id = ${cid}`,
+    sql`select count(*)::int as n from public.jobs where company_id = ${cid} and status = 'active'`,
+    sql`select stock, low_threshold from public.items where company_id = ${cid}`,
+    sql`select count(*)::int as n from public.workers where company_id = ${cid}`,
+    sql`select total from public.invoices where company_id = ${cid}`,
+  ]);
 
-  const lowStock = (items ?? []).filter((i) => i.stock <= i.low_threshold).length;
-  const billed = (invoices ?? []).reduce((s, i) => s + Number(i.total || 0), 0);
+  const lowStock = (items as any[]).filter((i) => i.stock <= i.low_threshold).length;
+  const billed = (invoices as any[]).reduce((s, i) => s + Number(i.total || 0), 0);
 
   const stats = [
-    { label: "Total jobs", value: String(jobCount ?? 0), sub: `${activeCount ?? 0} active`, icon: Hammer },
-    { label: "Inventory items", value: String(items?.length ?? 0), sub: `${lowStock} low stock`, icon: Boxes },
-    { label: "Workers", value: String(workerCount ?? 0), sub: "on the crew", icon: Users },
-    { label: "Invoiced", value: fmtMoney(billed), sub: `${invoices?.length ?? 0} invoices`, icon: FileText },
+    { label: "Total jobs", value: String(jobsCount[0].n), sub: `${activeCount[0].n} active`, icon: Hammer },
+    { label: "Inventory items", value: String((items as any[]).length), sub: `${lowStock} low stock`, icon: Boxes },
+    { label: "Workers", value: String(workersCount[0].n), sub: "on the crew", icon: Users },
+    { label: "Invoiced", value: fmtMoney(billed), sub: `${(invoices as any[]).length} invoices`, icon: FileText },
   ];
 
   return (

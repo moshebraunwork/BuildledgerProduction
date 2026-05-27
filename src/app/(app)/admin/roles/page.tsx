@@ -1,24 +1,18 @@
 import { requirePermission } from "@/lib/guard";
-import { createClient } from "@/lib/supabase-server";
+import { sql } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
 import { RolesManager } from "./roles-manager";
 
 export default async function RolesPage() {
-  await requirePermission("admin.roles");
-  const supabase = createClient();
-  const { data: roles } = await supabase
-    .from("roles")
-    .select("*")
-    .order("is_system", { ascending: false })
-    .order("name");
-
+  const user = await requirePermission("admin.roles");
+  const roles = await sql`
+    select * from public.roles where company_id = ${user.companyId}
+    order by is_system desc, name
+  `;
   return (
     <>
-      <PageHeader
-        title="Roles & permissions"
-        description="Create roles and choose exactly what each one can do."
-      />
-      <RolesManager initialRoles={roles ?? []} />
+      <PageHeader title="Roles & permissions" description="Create roles and choose exactly what each one can do." />
+      <RolesManager initialRoles={roles as any[]} />
     </>
   );
 }

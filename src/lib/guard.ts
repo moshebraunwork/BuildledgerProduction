@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser, type CurrentUser } from "@/lib/supabase-server";
-import { can } from "@/lib/permissions";
+import { getCurrentUser, type CurrentUser } from "./auth";
+import { can } from "./permissions";
 
 // Guards a page by permission. Returns the current user if allowed, otherwise
 // redirects. Superadmin always passes.
