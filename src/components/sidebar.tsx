@@ -10,7 +10,7 @@ import { can, type PermissionMap } from "@/lib/permissions";
 import { saveTheme } from "@/app/(app)/actions";
 import {
   LayoutDashboard, Hammer, Boxes, Users, Settings as SettingsIcon,
-  ScrollText, Shield, HardHat, ChevronLeft, ChevronRight,
+  ScrollText, Shield, HardHat, ChevronLeft, ChevronRight, FileText,
   ChevronDown, ChevronUp, Monitor, Moon, Sun, LogOut, User as UserIcon, UserCog,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -42,6 +42,7 @@ const NAV: NavItem[] = [
     ],
   },
   { href: "/jobs",       label: "Jobs",       icon: Hammer, perm: "jobs.view" },
+  { href: "/invoices",   label: "Invoices",   icon: FileText, perm: "invoices.view" },
   { href: "/inventory",  label: "Inventory",  icon: Boxes,  perm: "inventory.view" },
   { href: "/employees",  label: "Employees",  icon: Users,  perm: "employees.view" },
 ];
