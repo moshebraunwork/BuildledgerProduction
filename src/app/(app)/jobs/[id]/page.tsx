@@ -23,7 +23,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     sql`select * from public.job_costs where job_id = ${jobId}`,
     sql`select * from public.punches where job_id = ${jobId} order by started_at desc`,
     sql`select * from public.companies where id = ${user.companyId} limit 1`,
-    sql`select id, number, status, total, created_at from public.invoices where job_id = ${jobId} order by created_at desc`,
+    sql`select id, number, status, total, created_at, line_items, customer_name, customer_email, notes, due_date
+        from public.invoices where job_id = ${jobId} order by created_at desc`,
   ]);
 
   return (
@@ -42,6 +43,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         edit: can(user.isSuperadmin, user.permissions, "jobs.edit"),
         punches: can(user.isSuperadmin, user.permissions, "punches.manage"),
         invoiceCreate: can(user.isSuperadmin, user.permissions, "invoices.create"),
+        invoiceEdit: can(user.isSuperadmin, user.permissions, "invoices.edit"),
         invoiceSend: can(user.isSuperadmin, user.permissions, "invoices.send"),
         isSuperadmin: user.isSuperadmin,
       }}
