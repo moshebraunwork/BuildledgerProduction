@@ -19,11 +19,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SlideOver } from "@/components/slide-over";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney, fmtDate } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { Play, Square, ShoppingCart, Plus, Trash2, Camera, Pencil, FileText, Download, Send, Eye, Printer, Mail, X } from "lucide-react";
+import { Play, Square, ShoppingCart, Plus, Trash2, Camera, Pencil, FileText, Download, Send, Eye, Printer, Mail, ChevronRight } from "lucide-react";
 
 // ---- types ----
 interface Employee { id: string; name: string; role_title: string | null; pay_rate: number; require_punch_photo: boolean; }
@@ -763,8 +764,13 @@ table.items td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.
 
         {/* ===================== BILLING & INVOICE ===================== */}
         <TabsContent value="billing" className="space-y-4">
+          {/* Current billing summary */}
           <Card>
-            <CardHeader><CardTitle className="text-base">Billing — {job.billing_mode === "itemized" ? "Itemized" : "Per hour"}</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="text-base">
+                Billing — {job.billing_mode === "itemized" ? "Itemized" : "Per hour"}
+              </CardTitle>
+            </CardHeader>
             <CardContent className="space-y-4">
               {job.billing_mode === "hourly" && (
                 <div className="flex items-center justify-between rounded-md border p-3">
@@ -776,7 +782,12 @@ table.items td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.
                 </div>
               )}
               <Table>
-                <TableHeader><TableRow><TableHead>Line</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Line</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {billing.lines.map((l, i) => (
                     <TableRow key={i}>
@@ -784,7 +795,13 @@ table.items td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.
                       <TableCell className="text-right">{fmtMoney(l.amount)}</TableCell>
                     </TableRow>
                   ))}
-                  {billing.lines.length === 0 && <TableRow><TableCell colSpan={2} className="py-6 text-center text-sm text-muted-foreground">Nothing to bill yet.</TableCell></TableRow>}
+                  {billing.lines.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={2} className="py-6 text-center text-sm text-muted-foreground">
+                        Nothing to bill yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
               <div className="ml-auto w-56 space-y-1 text-sm">
@@ -802,6 +819,7 @@ table.items td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.
             </CardContent>
           </Card>
 
+          {/* Invoices list */}
           {invoices.length > 0 && (
             <Card>
               <CardHeader><CardTitle className="text-base">Invoices</CardTitle></CardHeader>
@@ -817,7 +835,11 @@ table.items td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.
                   </TableHeader>
                   <TableBody>
                     {invoices.map((inv) => (
-                      <TableRow key={inv.id}>
+                      <TableRow
+                        key={inv.id}
+                        className="cursor-pointer"
+                        onClick={() => { setViewingInv(inv); setEditingInv(false); setInvDraft(null); }}
+                      >
                         <TableCell className="font-medium">{inv.number}</TableCell>
                         <TableCell>{fmtMoney(inv.total)}</TableCell>
                         <TableCell>
@@ -825,21 +847,8 @@ table.items td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.
                             {inv.status}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right whitespace-nowrap">
-                          <Button size="sm" variant="ghost" title="Preview" onClick={() => { setViewingInv(inv); setEditingInv(false); setInvDraft(null); }}>
-                            <Eye className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" title="Download PDF" onClick={() => downloadPdf(inv)}>
-                            <Download className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" title="Print" onClick={() => printInvoice(inv)}>
-                            <Printer className="h-3.5 w-3.5" />
-                          </Button>
-                          {props.perms.invoiceSend && (
-                            <Button size="sm" variant="ghost" title="Send" onClick={() => openSendDialog(inv)}>
-                              <Send className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
+                        <TableCell className="text-right">
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -851,229 +860,319 @@ table.items td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.
         </TabsContent>
       </Tabs>
 
-      {/* ---- invoice preview / edit dialog ---- */}
+      {/* ══════════ INVOICE VIEW / EDIT SLIDE-OVER ══════════ */}
       {(() => {
-        const current = editingInv && invDraft ? invDraft : viewingInv;
+        const inv = editingInv && invDraft ? invDraft : viewingInv;
         return (
-          <Dialog open={!!viewingInv} onOpenChange={(o) => { if (!o) { setViewingInv(null); setEditingInv(false); setInvDraft(null); } }}>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-              {current && (
-                <>
-                  <DialogHeader>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <DialogTitle className="text-lg">{current.number}</DialogTitle>
-                        <Badge variant={current.status === "sent" ? "success" : "secondary"} className="capitalize text-xs">
-                          {current.status}
-                        </Badge>
+          <SlideOver
+            open={!!viewingInv}
+            onClose={() => { setViewingInv(null); setEditingInv(false); setInvDraft(null); }}
+            width="lg"
+            title={
+              inv ? (
+                <span className="flex items-center gap-2">
+                  {inv.number}
+                  <Badge variant={inv.status === "sent" ? "success" : "secondary"} className="capitalize text-xs font-normal">
+                    {inv.status}
+                  </Badge>
+                </span>
+              ) : undefined
+            }
+            footer={
+              editingInv ? (
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => { setEditingInv(false); setInvDraft(null); }}>Cancel</Button>
+                  <Button onClick={saveInvEdit} disabled={savingInvEdit}>
+                    {savingInvEdit ? "Saving…" : "Save changes"}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  {props.perms.invoiceEdit && (
+                    <Button variant="outline" onClick={() => {
+                      setInvDraft({ ...viewingInv!, line_items: viewingInv!.line_items?.map(l => ({ ...l })) ?? [] });
+                      setEditingInv(true);
+                    }}>
+                      <Pencil className="h-4 w-4 mr-1.5" /> Edit
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => viewingInv && downloadPdf(viewingInv)}>
+                    <Download className="h-4 w-4 mr-1.5" /> Download PDF
+                  </Button>
+                  <Button variant="outline" onClick={() => viewingInv && printInvoice(viewingInv)}>
+                    <Printer className="h-4 w-4 mr-1.5" /> Print
+                  </Button>
+                  {props.perms.invoiceSend && (
+                    <Button onClick={() => { const i = viewingInv!; setViewingInv(null); openSendDialog(i); }}>
+                      <Send className="h-4 w-4 mr-1.5" /> Send Invoice
+                    </Button>
+                  )}
+                </div>
+              )
+            }
+          >
+            {inv && (
+              <div className="space-y-6">
+                {/* Letterhead */}
+                <div className="flex items-start justify-between rounded-lg border bg-muted/30 p-4">
+                  <div>
+                    {props.company?.logo_url && (
+                      <img src={props.company.logo_url} alt="logo" className="max-h-10 max-w-[160px] object-contain mb-2" />
+                    )}
+                    <p className="font-semibold text-sm">{props.company?.invoice_from || props.company?.name}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Invoice</p>
+                    <p className="font-bold text-xl">{inv.number}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Issued {fmtDate(inv.created_at)}</p>
+                  </div>
+                </div>
+
+                {/* Bill To + Dates */}
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Bill To</p>
+                    {editingInv ? (
+                      <div className="space-y-2 pt-1">
+                        <Input
+                          value={invDraft?.customer_name ?? ""}
+                          onChange={(e) => setInvDraft(d => d ? { ...d, customer_name: e.target.value } : d)}
+                          placeholder="Customer name"
+                        />
+                        <Input
+                          type="email"
+                          value={invDraft?.customer_email ?? ""}
+                          onChange={(e) => setInvDraft(d => d ? { ...d, customer_email: e.target.value } : d)}
+                          placeholder="Email address"
+                        />
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {props.perms.invoiceEdit && !editingInv && (
-                          <Button size="sm" variant="outline" onClick={() => { setInvDraft({ ...viewingInv!, line_items: viewingInv!.line_items?.map(l => ({ ...l })) ?? [] }); setEditingInv(true); }}>
-                            <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
-                          </Button>
-                        )}
-                        {editingInv && (
-                          <>
-                            <Button size="sm" variant="ghost" onClick={() => { setEditingInv(false); setInvDraft(null); }}>
-                              <X className="h-3.5 w-3.5 mr-1" /> Cancel
-                            </Button>
-                            <Button size="sm" onClick={saveInvEdit} disabled={savingInvEdit}>
-                              {savingInvEdit ? "Saving…" : "Save changes"}
-                            </Button>
-                          </>
-                        )}
+                    ) : (
+                      <div className="pt-1">
+                        <p className="font-semibold">{inv.customer_name || "—"}</p>
+                        {inv.customer_email && <p className="text-sm text-muted-foreground">{inv.customer_email}</p>}
                       </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Issued</p>
+                      <p className="text-sm pt-1">{fmtDate(inv.created_at)}</p>
                     </div>
-                  </DialogHeader>
-
-                  <div className="space-y-6 mt-2">
-                    {/* Letterhead */}
-                    <div className="flex justify-between items-start gap-4 rounded-lg border bg-muted/30 p-4">
-                      <div>
-                        {props.company?.logo_url && (
-                          <img src={props.company.logo_url} alt="logo" className="max-h-10 max-w-[160px] object-contain mb-2" />
-                        )}
-                        <p className="font-semibold text-sm">{props.company?.invoice_from || props.company?.name}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Invoice</p>
-                        <p className="font-bold text-xl">{current.number}</p>
-                        <p className="text-xs text-muted-foreground mt-1">Issued {fmtDate(current.created_at)}</p>
-                      </div>
-                    </div>
-
-                    {/* Bill To + Dates */}
-                    <div className="grid grid-cols-2 gap-6">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Bill To</p>
-                        {editingInv ? (
-                          <div className="space-y-2">
-                            <Input value={invDraft?.customer_name ?? ""} onChange={(e) => setInvDraft(d => d ? { ...d, customer_name: e.target.value } : d)} placeholder="Customer name" />
-                            <Input type="email" value={invDraft?.customer_email ?? ""} onChange={(e) => setInvDraft(d => d ? { ...d, customer_email: e.target.value } : d)} placeholder="Customer email" />
-                          </div>
-                        ) : (
-                          <>
-                            <p className="font-semibold">{current.customer_name || "—"}</p>
-                            {current.customer_email && <p className="text-sm text-muted-foreground">{current.customer_email}</p>}
-                          </>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">Issue Date</p>
-                          <p className="text-sm">{fmtDate(current.created_at)}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">Due Date</p>
-                          {editingInv ? (
-                            <Input type="date" value={invDraft?.due_date ?? ""} onChange={(e) => setInvDraft(d => d ? { ...d, due_date: e.target.value || null } : d)} className="h-8 text-sm" />
-                          ) : (
-                            <p className="text-sm">{current.due_date ? fmtDate(current.due_date) : "—"}</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    {/* Line items */}
-                    <div>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Description</TableHead>
-                            <TableHead className="text-right w-16">Qty</TableHead>
-                            <TableHead className="text-right w-28">Amount</TableHead>
-                            {editingInv && <TableHead className="w-10" />}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {(editingInv ? invDraft?.line_items : current.line_items ?? [])?.map((l, i) => (
-                            <TableRow key={i}>
-                              <TableCell>
-                                {editingInv ? (
-                                  <Input value={l.name} onChange={(e) => { const items = [...(invDraft?.line_items ?? [])]; items[i] = { ...items[i], name: e.target.value }; recalcInvDraft(items); }} className="h-7" />
-                                ) : l.name}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {editingInv ? (
-                                  <Input type="number" value={l.qty ?? ""} onChange={(e) => { const items = [...(invDraft?.line_items ?? [])]; items[i] = { ...items[i], qty: e.target.value ? Number(e.target.value) : undefined }; recalcInvDraft(items); }} className="h-7 w-16 text-right" />
-                                ) : (l.qty ?? "—")}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {editingInv ? (
-                                  <Input type="number" step="0.01" value={l.amount} onChange={(e) => { const items = [...(invDraft?.line_items ?? [])]; items[i] = { ...items[i], amount: Number(e.target.value) }; recalcInvDraft(items); }} className="h-7 w-24 text-right" />
-                                ) : fmtMoney(l.amount)}
-                              </TableCell>
-                              {editingInv && (
-                                <TableCell>
-                                  <Button size="sm" variant="ghost" onClick={() => recalcInvDraft((invDraft?.line_items ?? []).filter((_, idx) => idx !== i))}>
-                                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                                  </Button>
-                                </TableCell>
-                              )}
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                      {editingInv && (
-                        <Button size="sm" variant="outline" className="mt-2" onClick={() => recalcInvDraft([...(invDraft?.line_items ?? []), { name: "", amount: 0 }])}>
-                          <Plus className="h-3.5 w-3.5 mr-1" /> Add line
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Totals */}
-                    <div className="ml-auto w-60 space-y-1.5 text-sm">
-                      <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{fmtMoney(current.subtotal)}</span></div>
-                      <div className="flex justify-between text-muted-foreground"><span>Tax</span><span>{fmtMoney(current.tax)}</span></div>
-                      <Separator />
-                      <div className="flex justify-between font-bold text-base"><span>Total</span><span>{fmtMoney(current.total)}</span></div>
-                    </div>
-
-                    {/* Notes */}
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Notes</p>
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Due Date</p>
                       {editingInv ? (
-                        <Textarea value={invDraft?.notes ?? ""} onChange={(e) => setInvDraft(d => d ? { ...d, notes: e.target.value } : d)} placeholder="Payment instructions, thank you note, etc." rows={3} />
+                        <Input
+                          type="date"
+                          value={invDraft?.due_date ?? ""}
+                          onChange={(e) => setInvDraft(d => d ? { ...d, due_date: e.target.value || null } : d)}
+                          className="h-8 text-sm mt-1"
+                        />
                       ) : (
-                        <p className="text-sm text-muted-foreground whitespace-pre-line">{current.notes || "—"}</p>
-                      )}
-                    </div>
-
-                    <Separator />
-
-                    {/* Actions */}
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" onClick={() => downloadPdf(viewingInv!)}>
-                        <Download className="h-4 w-4 mr-1.5" /> Download PDF
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => printInvoice(viewingInv!)}>
-                        <Printer className="h-4 w-4 mr-1.5" /> Print
-                      </Button>
-                      {props.perms.invoiceSend && (
-                        <Button size="sm" onClick={() => { const inv = viewingInv!; setViewingInv(null); openSendDialog(inv); }}>
-                          <Send className="h-4 w-4 mr-1.5" /> Send Invoice
-                        </Button>
+                        <p className="text-sm pt-1">{inv.due_date ? fmtDate(inv.due_date) : "Not set"}</p>
                       )}
                     </div>
                   </div>
-                </>
-              )}
-            </DialogContent>
-          </Dialog>
+                </div>
+
+                <Separator />
+
+                {/* Line items */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Line Items</p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="text-right w-16">Qty</TableHead>
+                        <TableHead className="text-right w-28">Amount</TableHead>
+                        {editingInv && <TableHead className="w-10" />}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(editingInv ? invDraft?.line_items : inv.line_items ?? [])?.map((l, i) => (
+                        <TableRow key={i}>
+                          <TableCell>
+                            {editingInv ? (
+                              <Input
+                                value={l.name}
+                                onChange={(e) => { const items = [...(invDraft?.line_items ?? [])]; items[i] = { ...items[i], name: e.target.value }; recalcInvDraft(items); }}
+                                className="h-8"
+                                placeholder="Description"
+                              />
+                            ) : l.name}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {editingInv ? (
+                              <Input
+                                type="number"
+                                value={l.qty ?? ""}
+                                onChange={(e) => { const items = [...(invDraft?.line_items ?? [])]; items[i] = { ...items[i], qty: e.target.value ? Number(e.target.value) : undefined }; recalcInvDraft(items); }}
+                                className="h-8 w-16 text-right"
+                              />
+                            ) : (l.qty ?? "—")}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {editingInv ? (
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={l.amount}
+                                onChange={(e) => { const items = [...(invDraft?.line_items ?? [])]; items[i] = { ...items[i], amount: Number(e.target.value) }; recalcInvDraft(items); }}
+                                className="h-8 w-24 text-right"
+                              />
+                            ) : fmtMoney(l.amount)}
+                          </TableCell>
+                          {editingInv && (
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => recalcInvDraft((invDraft?.line_items ?? []).filter((_, idx) => idx !== i))}
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {editingInv && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => recalcInvDraft([...(invDraft?.line_items ?? []), { name: "", amount: 0 }])}
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Add line item
+                    </Button>
+                  )}
+                </div>
+
+                {/* Totals */}
+                <div className="rounded-lg border p-4 space-y-2 text-sm">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Subtotal</span><span>{fmtMoney(inv.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Tax</span><span>{fmtMoney(inv.tax)}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between font-bold text-base">
+                    <span>Total</span><span>{fmtMoney(inv.total)}</span>
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Notes</p>
+                  {editingInv ? (
+                    <Textarea
+                      value={invDraft?.notes ?? ""}
+                      onChange={(e) => setInvDraft(d => d ? { ...d, notes: e.target.value } : d)}
+                      placeholder="Payment instructions, thank you note, etc."
+                      rows={3}
+                    />
+                  ) : (
+                    <p className="text-sm text-muted-foreground whitespace-pre-line">
+                      {inv.notes || "No notes"}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </SlideOver>
         );
       })()}
 
-      {/* ---- invoice send dialog ---- */}
-      <Dialog open={sendDialogOpen} onOpenChange={(o) => { if (!o) setSendDialogOpen(false); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Send {sendTarget?.number}</DialogTitle></DialogHeader>
-          <div className="space-y-5">
-            <div className="space-y-3">
-              <Label className="font-medium">Send to</Label>
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 cursor-pointer text-sm">
-                  <input type="radio" name="invSendTarget" checked={!useOverride} onChange={() => setUseOverride(false)} className="accent-primary" />
-                  Customer email
-                  {sendTarget?.customer_email && <span className="text-muted-foreground">({sendTarget.customer_email})</span>}
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer text-sm">
-                  <input type="radio" name="invSendTarget" checked={useOverride} onChange={() => setUseOverride(true)} className="accent-primary" />
-                  Different email
-                </label>
-              </div>
-              {useOverride && (
-                <Input type="email" placeholder="Enter email address" value={overrideEmail} onChange={(e) => setOverrideEmail(e.target.value)} autoFocus />
-              )}
-            </div>
-            <Separator />
-            <div className="space-y-3">
-              <Label className="font-medium">Include in email</Label>
-              {([
-                { key: "logo" as const, label: "Company logo & branding" },
-                { key: "jobDetails" as const, label: "Job details (name & location)" },
-                { key: "dueDate" as const, label: "Due date" },
-                { key: "prices" as const, label: "Prices & totals" },
-                { key: "paymentInstructions" as const, label: "Notes / payment instructions" },
-              ]).map(({ key, label }) => (
-                <label key={key} className="flex items-center gap-2 cursor-pointer text-sm">
-                  <Checkbox checked={includeOptions[key]} onCheckedChange={(v) => setIncludeOptions(o => ({ ...o, [key]: !!v }))} />
-                  {label}
-                </label>
-              ))}
-            </div>
-          </div>
-          <DialogFooter className="mt-2">
+      {/* ══════════ INVOICE SEND SLIDE-OVER ══════════ */}
+      <SlideOver
+        open={sendDialogOpen}
+        onClose={() => setSendDialogOpen(false)}
+        width="sm"
+        title={`Send ${sendTarget?.number ?? "Invoice"}`}
+        description="Choose who to send to and what to include."
+        footer={
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setSendDialogOpen(false)}>Cancel</Button>
             <Button onClick={doSend} disabled={isSending}>
               <Mail className="h-4 w-4 mr-1.5" />
               {isSending ? "Sending…" : "Send Invoice"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        }
+      >
+        <div className="space-y-6">
+          {/* Recipient */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Send to</p>
+            <div className="space-y-2">
+              <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-accent/50 transition-colors">
+                <input
+                  type="radio"
+                  name="invSendTarget"
+                  checked={!useOverride}
+                  onChange={() => setUseOverride(false)}
+                  className="mt-0.5 accent-primary"
+                />
+                <div>
+                  <p className="text-sm font-medium">Customer on file</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {sendTarget?.customer_email ?? "No email on file"}
+                  </p>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-accent/50 transition-colors">
+                <input
+                  type="radio"
+                  name="invSendTarget"
+                  checked={useOverride}
+                  onChange={() => setUseOverride(true)}
+                  className="mt-0.5 accent-primary"
+                />
+                <div>
+                  <p className="text-sm font-medium">Different email address</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Won&apos;t update the invoice</p>
+                </div>
+              </label>
+            </div>
+            {useOverride && (
+              <Input
+                type="email"
+                placeholder="Enter email address"
+                value={overrideEmail}
+                onChange={(e) => setOverrideEmail(e.target.value)}
+                autoFocus
+              />
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Include options */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium">What to include</p>
+            {([
+              { key: "logo" as const, label: "Company logo & branding", desc: "Shows your logo at the top" },
+              { key: "jobDetails" as const, label: "Job details", desc: "Job name and location" },
+              { key: "dueDate" as const, label: "Due date", desc: "Payment due date" },
+              { key: "prices" as const, label: "Prices & totals", desc: "Line amounts, subtotal, tax, total" },
+              { key: "paymentInstructions" as const, label: "Notes", desc: "Payment instructions or message" },
+            ]).map(({ key, label, desc }) => (
+              <label key={key} className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-accent/50 transition-colors">
+                <Checkbox
+                  checked={includeOptions[key]}
+                  onCheckedChange={(v) => setIncludeOptions(o => ({ ...o, [key]: !!v }))}
+                  className="mt-0.5"
+                />
+                <div>
+                  <p className="text-sm font-medium">{label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      </SlideOver>
 
       {/* ---- punch dialog ---- */}
       <Dialog open={!!punchDialog} onOpenChange={(o) => !o && setPunchDialog(null)}>
