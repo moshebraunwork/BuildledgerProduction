@@ -19,8 +19,13 @@ export function UserSettingsForm({ theme, fullName }: { theme: string; fullName:
   async function onSave() {
     const res = await saveProfile(name, themePref);
     if (res.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
-    setTheme(themePref);
     toast({ title: "Saved" });
+  }
+
+  // Apply immediately so the user sees the change live; persisted on Save.
+  function onThemeChange(value: string) {
+    setThemePref(value);
+    setTheme(value);
   }
 
   return (
@@ -34,7 +39,7 @@ export function UserSettingsForm({ theme, fullName }: { theme: string; fullName:
           </div>
           <div className="space-y-2">
             <Label>Theme</Label>
-            <Select value={themePref} onValueChange={setThemePref}>
+            <Select value={themePref} onValueChange={onThemeChange}>
               <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="system">System</SelectItem>

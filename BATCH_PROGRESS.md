@@ -16,13 +16,24 @@ This file tracks the UX/feature improvements requested after the initial Neon mi
 - [x] **Settings split** — `/settings` = user-only (display name + theme). `/admin/settings` = company name, invoice "from", default rate, tax rate (admin.company perm).
 - [x] **Dark mode tweaks** — improved palette: card surfaces sit above the background for visual hierarchy, lighter borders, blue accent on primary. Less flat than before.
 
-## ⏳ Batch 2 — Big interaction change (TODO next session)
+## ⏳ Batch 2 — Big interaction change (IN PROGRESS)
 
-- [ ] Replace all dialogs/popups with right-side **slide-out** panels
-- [ ] **Click any row** → opens slide-out detail
-- [ ] **Right-click row** → context menu (View / Edit / Delete with confirmation)
-- [ ] Fold **Invoices** module into Jobs (the page already exists; need to remove from nav nav already done; consolidate UX and remove `/invoices` standalone)
-- [ ] Strong delete confirmation pattern (typed name / second-step button)
+DONE this session:
+- [x] **Theme switch bug fixed** — ApplyTheme no longer fights the user; settings applies theme live on selection. Root cause: ApplyTheme re-asserted the DB theme on every mount.
+- [x] **Employee system invitations** — add-employee form has an "invite to system" toggle + email; uses Clerk `invitations.createInvitation`. Invite status shown in the list (Invited / Active), resend available from the edit panel. New columns via migration `0004_employee_invites.sql` (folded into 0001 for fresh installs). Actions: inviteEmployee, resendInvite, refreshInviteStatuses.
+- [x] **Slide-over component** (`src/components/slide-over.tsx`) — reusable right-side panel, replaces dialogs.
+- [x] **Row actions** (`src/components/row-actions.tsx`) — right-click context menu + strong DeleteConfirm (type-the-name).
+- [x] **Employees page converted** to the new pattern: click row → slide-over edit; right-click → context menu; delete → typed confirmation. This is the reference implementation for the others.
+
+STILL TODO (apply the same pattern to the rest):
+- [ ] Inventory page → slide-over + context menu + typed delete
+- [ ] Jobs list → slide-over (note: jobs/[id] is a full page today; decide slide-over vs keep full page for the detail given its size)
+- [ ] Admin → Users → slide-over/context where it makes sense
+- [ ] Admin → Roles → slide-over instead of dialog
+- [ ] Job detail: replace its internal dialogs (punch, add item, add cost) with slide-overs or inline
+- [ ] Fold Invoices into Jobs and remove the standalone /invoices route (nav entry already removed)
+
+DEPLOY for this session: run migration `0004_employee_invites.sql` on Neon, then npm install/build/pm2 restart. Also set NEXT_PUBLIC_APP_URL=https://workstock.mobrauntech.com in .env.local so invite links point to the right place.
 
 ## ⏳ Batch 3 — Analytics + product review (TODO later)
 

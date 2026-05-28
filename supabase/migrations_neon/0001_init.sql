@@ -52,6 +52,10 @@ create table public.employees (
   phone       text,
   pay_rate    numeric(10,2) default 0,
   require_punch_photo boolean not null default false,
+  invite_email        text,
+  invite_status       text,
+  clerk_invitation_id text,
+  clerk_user_id       text,
   created_at  timestamptz default now()
 );
 
