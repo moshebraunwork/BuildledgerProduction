@@ -65,7 +65,13 @@ export async function addJobItem(params: {
     values (${params.jobId}, ${params.itemId}, ${params.name}, ${params.qty}, ${params.cost}, ${params.charge})
     returning *
   `;
-  await sql`update public.items set stock = ${Math.max(0, params.currentStock - params.qty)} where id = ${params.itemId}`;
+  // Atomic decrement: compute from the current DB value, never below zero,
+  // so two concurrent adds can't clobber each other's stock count.
+  await sql`
+    update public.items
+    set stock = greatest(0, stock - ${params.qty})
+    where id = ${params.itemId}
+  `;
   return { data: rows[0] };
 }
 export async function removeJobItem(id: string) {

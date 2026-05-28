@@ -49,3 +49,20 @@ DEPLOY for this session: run migration `0004_employee_invites.sql` on Neon, then
    (skip this if you have a fresh DB — 0001/0002 already use the new names)
 3. `npm install && npm run build && pm2 restart buildledger`
 4. Hard-refresh the browser
+
+## ✅ Batch 3 — Dashboard analytics + product review (DONE)
+
+- [x] **Dashboard analytics redesign** (`dashboard/page.tsx` + `dashboard-charts.tsx`)
+    - Stat cards: revenue invoiced/sent, active jobs, employees + who's clocked in now, low stock
+    - Revenue line chart (last 6 months), jobs-by-status donut, top-employees-by-hours bar chart (recharts 3.x for React 19)
+    - Low-stock list + recent-activity feed (from audit_log)
+    - Theme-aware chart colors, empty-state fallbacks
+- [x] **10-improvements review** written to `IMPROVEMENTS.md`
+- [x] Implemented two quick wins from the review immediately:
+    - #1 upload route now validates image type + 10 MB cap
+    - #6 stock decrement is now atomic in SQL (no client-snapshot race)
+
+Note: added `recharts@^3.8.1` (3.x required for React 19 compatibility; 2.x has a peer conflict).
+
+### Remaining from IMPROVEMENTS.md (not yet done, by design — see that file for detail/ordering)
+#2 invite-status pagination, #3 Clerk webhook, #4 money-in-cents, #5 last 3 job-detail popups, #7 logging, #8 pagination/indexes, #9 tests/CI, #10 accessibility/mobile touch actions.
