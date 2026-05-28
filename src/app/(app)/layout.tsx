@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { Sidebar } from "@/components/sidebar";
-import { Topbar } from "@/components/topbar";
 import { ApplyTheme } from "@/components/apply-theme";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -25,11 +24,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-screen">
       <ApplyTheme theme={user.theme} />
-      <Sidebar isSuperadmin={user.isSuperadmin} permissions={user.permissions} />
-      <div className="flex flex-1 flex-col">
-        <Topbar email={user.email} fullName={user.fullName} />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
-      </div>
+      <Sidebar
+        isSuperadmin={user.isSuperadmin}
+        permissions={user.permissions}
+        email={user.email}
+        fullName={user.fullName}
+      />
+      <main className="flex-1 overflow-y-auto p-6">{children}</main>
     </div>
   );
 }

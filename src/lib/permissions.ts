@@ -40,11 +40,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
-    module: "Workers",
+    module: "Employees",
     perms: [
-      { key: "workers.view", label: "View workers" },
-      { key: "workers.edit", label: "Add & edit workers" },
-      { key: "workers.delete", label: "Delete workers" },
+      { key: "employees.view", label: "View employees" },
+      { key: "employees.edit", label: "Add & edit employees" },
+      { key: "employees.delete", label: "Delete employees" },
     ],
   },
   {

@@ -9,11 +9,11 @@ export default async function DashboardPage() {
   const user = await requirePermission("dashboard.view");
   const cid = user.companyId;
 
-  const [jobsCount, activeCount, items, workersCount, invoices] = await Promise.all([
+  const [jobsCount, activeCount, items, employeesCount, invoices] = await Promise.all([
     sql`select count(*)::int as n from public.jobs where company_id = ${cid}`,
     sql`select count(*)::int as n from public.jobs where company_id = ${cid} and status = 'active'`,
     sql`select stock, low_threshold from public.items where company_id = ${cid}`,
-    sql`select count(*)::int as n from public.workers where company_id = ${cid}`,
+    sql`select count(*)::int as n from public.employees where company_id = ${cid}`,
     sql`select total from public.invoices where company_id = ${cid}`,
   ]);
 
@@ -23,7 +23,7 @@ export default async function DashboardPage() {
   const stats = [
     { label: "Total jobs", value: String(jobsCount[0].n), sub: `${activeCount[0].n} active`, icon: Hammer },
     { label: "Inventory items", value: String((items as any[]).length), sub: `${lowStock} low stock`, icon: Boxes },
-    { label: "Workers", value: String(workersCount[0].n), sub: "on the crew", icon: Users },
+    { label: "Employees", value: String(employeesCount[0].n), sub: "on the crew", icon: Users },
     { label: "Invoiced", value: fmtMoney(billed), sub: `${(invoices as any[]).length} invoices`, icon: FileText },
   ];
 

@@ -12,28 +12,28 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney } from "@/lib/utils";
 import { Plus, Pencil, Trash2, Camera } from "lucide-react";
-import { createWorker, updateWorker, deleteWorker } from "./actions";
+import { createEmployee, updateEmployee, deleteEmployee } from "./actions";
 
-interface Worker {
+interface Employee {
   id: string; name: string; role_title: string | null; phone: string | null;
   pay_rate: number; require_punch_photo: boolean;
 }
 
 const blank = { name: "", role_title: "", phone: "", pay_rate: 0, require_punch_photo: false };
 
-export function WorkersManager({
-  initialWorkers, canEdit, canDelete,
+export function EmployeesManager({
+  initialEmployees, canEdit, canDelete,
 }: {
-  initialWorkers: Worker[]; canEdit: boolean; canDelete: boolean;
+  initialEmployees: Employee[]; canEdit: boolean; canDelete: boolean;
 }) {
   const { toast } = useToast();
-  const [workers, setWorkers] = React.useState<Worker[]>(initialWorkers);
+  const [employees, setEmployees] = React.useState<Employee[]>(initialEmployees);
   const [open, setOpen] = React.useState(false);
-  const [editing, setEditing] = React.useState<Worker | null>(null);
+  const [editing, setEditing] = React.useState<Employee | null>(null);
   const [form, setForm] = React.useState<typeof blank>(blank);
 
   function startNew() { setEditing(null); setForm(blank); setOpen(true); }
-  function startEdit(w: Worker) {
+  function startEdit(w: Employee) {
     setEditing(w);
     setForm({ name: w.name, role_title: w.role_title ?? "", phone: w.phone ?? "", pay_rate: w.pay_rate, require_punch_photo: w.require_punch_photo });
     setOpen(true);
@@ -46,30 +46,30 @@ export function WorkersManager({
       pay_rate: Number(form.pay_rate), require_punch_photo: form.require_punch_photo,
     };
     if (editing) {
-      const res = await updateWorker(editing.id, payload);
+      const res = await updateEmployee(editing.id, payload);
       if (res.error) return toast({ title: "Save failed", description: res.error, variant: "destructive" });
-      setWorkers((ws) => ws.map((x) => (x.id === editing.id ? { ...x, ...payload } : x)));
-      toast({ title: "Worker updated" });
+      setEmployees((ws) => ws.map((x) => (x.id === editing.id ? { ...x, ...payload } : x)));
+      toast({ title: "Employee updated" });
     } else {
-      const res = await createWorker(payload);
+      const res = await createEmployee(payload);
       if (res.error) return toast({ title: "Create failed", description: res.error, variant: "destructive" });
-      setWorkers((ws) => [...ws, res.data as Worker]);
-      toast({ title: "Worker added" });
+      setEmployees((ws) => [...ws, res.data as Employee]);
+      toast({ title: "Employee added" });
     }
     setOpen(false);
   }
 
-  async function remove(w: Worker) {
+  async function remove(w: Employee) {
     if (!confirm(`Remove "${w.name}" from the crew?`)) return;
-    const res = await deleteWorker(w.id);
+    const res = await deleteEmployee(w.id);
     if (res.error) return toast({ title: "Delete failed", description: res.error, variant: "destructive" });
-    setWorkers((ws) => ws.filter((x) => x.id !== w.id));
-    toast({ title: "Worker removed" });
+    setEmployees((ws) => ws.filter((x) => x.id !== w.id));
+    toast({ title: "Employee removed" });
   }
 
   return (
     <>
-      {canEdit && <div className="mb-4 flex justify-end"><Button onClick={startNew}><Plus className="h-4 w-4" /> Add worker</Button></div>}
+      {canEdit && <div className="mb-4 flex justify-end"><Button onClick={startNew}><Plus className="h-4 w-4" /> Add employee</Button></div>}
 
       <Card>
         <CardContent className="p-0">
@@ -82,7 +82,7 @@ export function WorkersManager({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {workers.map((w) => (
+              {employees.map((w) => (
                 <TableRow key={w.id}>
                   <TableCell className="font-medium">{w.name}</TableCell>
                   <TableCell className="text-sm">{w.role_title ?? "—"}</TableCell>
@@ -99,7 +99,7 @@ export function WorkersManager({
                   )}
                 </TableRow>
               ))}
-              {workers.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">No workers yet.</TableCell></TableRow>}
+              {employees.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">No employees yet.</TableCell></TableRow>}
             </TableBody>
           </Table>
         </CardContent>
@@ -107,7 +107,7 @@ export function WorkersManager({
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{editing ? "Edit worker" : "Add worker"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? "Edit employee" : "Add employee"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-4">

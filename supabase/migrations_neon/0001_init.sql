@@ -43,7 +43,7 @@ create table public.users (
   created_at    timestamptz default now()
 );
 
-create table public.workers (
+create table public.employees (
   id          uuid primary key default gen_random_uuid(),
   company_id  uuid not null references public.companies(id) on delete cascade,
   user_id     uuid references public.users(id) on delete set null,
@@ -84,10 +84,10 @@ create table public.jobs (
   created_at     timestamptz default now()
 );
 
-create table public.job_workers (
+create table public.job_employees (
   job_id    uuid not null references public.jobs(id) on delete cascade,
-  worker_id uuid not null references public.workers(id) on delete cascade,
-  primary key (job_id, worker_id)
+  employee_id uuid not null references public.employees(id) on delete cascade,
+  primary key (job_id, employee_id)
 );
 
 create table public.job_items (
@@ -114,7 +114,7 @@ create table public.punches (
   id         uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   job_id     uuid not null references public.jobs(id) on delete cascade,
-  worker_id  uuid not null references public.workers(id) on delete cascade,
+  employee_id  uuid not null references public.employees(id) on delete cascade,
   kind       text not null default 'site',
   started_at timestamptz not null default now(),
   ended_at   timestamptz,

@@ -12,11 +12,11 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   if (!jobRows.length) notFound();
   const job = jobRows[0];
 
-  const [crewRows, allWorkers, jobItems, catalog, costs, punches, companyRows, existingInvoices] = await Promise.all([
+  const [crewRows, allEmployees, jobItems, catalog, costs, punches, companyRows, existingInvoices] = await Promise.all([
     sql`select w.id, w.name, w.role_title, w.pay_rate, w.require_punch_photo
-        from public.job_workers jw join public.workers w on w.id = jw.worker_id
+        from public.job_employees jw join public.employees w on w.id = jw.employee_id
         where jw.job_id = ${jobId}`,
-    sql`select id, name, role_title, pay_rate, require_punch_photo from public.workers
+    sql`select id, name, role_title, pay_rate, require_punch_photo from public.employees
         where company_id = ${user.companyId} order by name`,
     sql`select * from public.job_items where job_id = ${jobId}`,
     sql`select * from public.items where company_id = ${user.companyId} order by name`,
@@ -30,7 +30,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     <JobDetail
       job={job as any}
       crew={crewRows as any[]}
-      allWorkers={allWorkers as any[]}
+      allEmployees={allEmployees as any[]}
       jobItems={jobItems as any[]}
       catalog={catalog as any[]}
       costs={costs as any[]}

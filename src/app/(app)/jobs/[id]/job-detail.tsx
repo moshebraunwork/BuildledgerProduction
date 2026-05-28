@@ -24,12 +24,12 @@ import { fmtMoney, fmtDate } from "@/lib/utils";
 import { Play, Square, ShoppingCart, Plus, Trash2, Camera, Pencil, FileText, Download, Send } from "lucide-react";
 
 // ---- types ----
-interface Worker { id: string; name: string; role_title: string | null; pay_rate: number; require_punch_photo: boolean; }
+interface Employee { id: string; name: string; role_title: string | null; pay_rate: number; require_punch_photo: boolean; }
 interface JobItem { id: string; item_id: string | null; name: string; qty: number; cost: number; charge: number; excluded: boolean; }
 interface CatalogItem { id: string; name: string; cost: number; charge: number; stock: number; }
 interface JobCost { id: string; label: string; cost: number; charge: number; excluded: boolean; }
 interface Punch {
-  id: string; worker_id: string; kind: string; started_at: string; ended_at: string | null;
+  id: string; employee_id: string; kind: string; started_at: string; ended_at: string | null;
   note: string | null; started_photo_url: string | null; ended_photo_url: string | null;
 }
 interface Job {
@@ -43,8 +43,8 @@ interface Perms { edit: boolean; punches: boolean; invoiceCreate: boolean; invoi
 
 export function JobDetail(props: {
   job: Job;
-  crew: Worker[];
-  allWorkers: Worker[];
+  crew: Employee[];
+  allEmployees: Employee[];
   jobItems: JobItem[];
   catalog: CatalogItem[];
   costs: JobCost[];
@@ -57,7 +57,7 @@ export function JobDetail(props: {
   const { toast } = useToast();
 
   const [job, setJob] = React.useState<Job>(props.job);
-  const [crew, setCrew] = React.useState<Worker[]>(props.crew);
+  const [crew, setCrew] = React.useState<Employee[]>(props.crew);
   const [jobItems, setJobItems] = React.useState<JobItem[]>(props.jobItems);
   const [costs, setCosts] = React.useState<JobCost[]>(props.costs);
   const [punches, setPunches] = React.useState<Punch[]>(props.punches);
@@ -71,10 +71,10 @@ export function JobDetail(props: {
   }, []);
 
   // ---- crew management ----
-  const availableToAdd = props.allWorkers.filter((w) => !crew.some((c) => c.id === w.id));
+  const availableToAdd = props.allEmployees.filter((w) => !crew.some((c) => c.id === w.id));
 
   async function addCrew(workerId: string) {
-    const worker = props.allWorkers.find((w) => w.id === workerId);
+    const worker = props.allEmployees.find((w) => w.id === workerId);
     if (!worker) return;
     const res = await addCrewAction(job.id, workerId);
     if (res.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
@@ -87,26 +87,26 @@ export function JobDetail(props: {
   }
 
   // ---- punch system ----
-  const openPunch = (workerId: string) => punches.find((p) => p.worker_id === workerId && !p.ended_at);
+  const openPunch = (workerId: string) => punches.find((p) => p.employee_id === workerId && !p.ended_at);
 
   // requirement: photo needed if job OR worker requires it
-  function photoRequired(worker: Worker) {
+  function photoRequired(worker: Employee) {
     return job.require_punch_photo || worker.require_punch_photo;
   }
 
   const [punchDialog, setPunchDialog] = React.useState<{
-    worker: Worker; kind: "site" | "store"; mode: "in" | "out"; punchId?: string;
+    worker: Employee; kind: "site" | "store"; mode: "in" | "out"; punchId?: string;
   } | null>(null);
   const [punchNote, setPunchNote] = React.useState("");
   const [punchFile, setPunchFile] = React.useState<File | null>(null);
   const [busy, setBusy] = React.useState(false);
 
-  function startPunchFlow(worker: Worker, kind: "site" | "store") {
+  function startPunchFlow(worker: Employee, kind: "site" | "store") {
     setPunchNote("");
     setPunchFile(null);
     setPunchDialog({ worker, kind, mode: "in" });
   }
-  function stopPunchFlow(worker: Worker, punch: Punch) {
+  function stopPunchFlow(worker: Employee, punch: Punch) {
     setPunchNote(punch.note ?? "");
     setPunchFile(null);
     setPunchDialog({ worker, kind: punch.kind as "site" | "store", mode: "out", punchId: punch.id });
@@ -161,7 +161,7 @@ export function JobDetail(props: {
   // hours worked per worker (site only, and total)
   function workerSeconds(workerId: string, kind?: "site" | "store") {
     return punches
-      .filter((p) => p.worker_id === workerId && (kind ? p.kind === kind : true))
+      .filter((p) => p.employee_id === workerId && (kind ? p.kind === kind : true))
       .reduce((s, p) => {
         const end = p.ended_at ? new Date(p.ended_at).getTime() : now;
         return s + Math.max(0, end - new Date(p.started_at).getTime());
@@ -419,14 +419,14 @@ export function JobDetail(props: {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Worker</TableHead><TableHead>Type</TableHead>
+                    <TableHead>Employee</TableHead><TableHead>Type</TableHead>
                     <TableHead>Start</TableHead><TableHead>End</TableHead>
                     <TableHead>Duration</TableHead><TableHead>Note</TableHead><TableHead>Photos</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {punches.map((p) => {
-                    const w = crew.find((c) => c.id === p.worker_id) ?? props.allWorkers.find((x) => x.id === p.worker_id);
+                    const w = crew.find((c) => c.id === p.employee_id) ?? props.allEmployees.find((x) => x.id === p.employee_id);
                     const end = p.ended_at ? new Date(p.ended_at).getTime() : now;
                     const dur = (end - new Date(p.started_at).getTime()) / 1000;
                     return (

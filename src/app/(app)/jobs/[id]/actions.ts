@@ -15,13 +15,13 @@ async function requireJobAccess(perm: string) {
 export async function addCrew(jobId: string, workerId: string) {
   const user = await requireJobAccess("jobs.edit");
   if (!user) return { error: "Forbidden" };
-  await sql`insert into public.job_workers (job_id, worker_id) values (${jobId}, ${workerId}) on conflict do nothing`;
+  await sql`insert into public.job_employees (job_id, employee_id) values (${jobId}, ${workerId}) on conflict do nothing`;
   return { ok: true };
 }
 export async function removeCrew(jobId: string, workerId: string) {
   const user = await requireJobAccess("jobs.edit");
   if (!user) return { error: "Forbidden" };
-  await sql`delete from public.job_workers where job_id = ${jobId} and worker_id = ${workerId}`;
+  await sql`delete from public.job_employees where job_id = ${jobId} and employee_id = ${workerId}`;
   return { ok: true };
 }
 
@@ -32,7 +32,7 @@ export async function punchIn(params: {
   const user = await requireJobAccess("punches.manage");
   if (!user) return { error: "Forbidden" };
   const rows = await sql`
-    insert into public.punches (company_id, job_id, worker_id, kind, note, started_photo_url)
+    insert into public.punches (company_id, job_id, employee_id, kind, note, started_photo_url)
     values (${user.companyId}, ${params.jobId}, ${params.workerId}, ${params.kind}, ${params.note}, ${params.photoUrl})
     returning *
   `;
