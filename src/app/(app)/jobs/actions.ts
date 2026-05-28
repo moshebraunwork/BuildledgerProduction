@@ -23,3 +23,11 @@ export async function createJob(input: JobInput) {
   await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "job.create", entity: "job", entityId: rows[0].id });
   return { data: rows[0] };
 }
+
+export async function deleteJob(id: string) {
+  const user = await getCurrentUser();
+  if (!user || !can(user.isSuperadmin, user.permissions, "jobs.delete")) return { error: "Forbidden" };
+  await sql`delete from public.jobs where id = ${id} and company_id = ${user.companyId}`;
+  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "job.delete", entity: "job", entityId: id });
+  return { ok: true };
+}

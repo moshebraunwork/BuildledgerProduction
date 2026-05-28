@@ -7,10 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SlideOver } from "@/components/slide-over";
+import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney } from "@/lib/utils";
-import { Plus, Pencil, Trash2, Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { createItem, updateItem, deleteItem } from "./actions";
 
 interface Item {
@@ -31,6 +32,8 @@ export function InventoryManager({
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Item | null>(null);
   const [form, setForm] = React.useState<typeof blank>(blank);
+  const [ctx, setCtx] = React.useState<ContextMenuState | null>(null);
+  const [toDelete, setToDelete] = React.useState<Item | null>(null);
 
   const filtered = items.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
 
@@ -61,12 +64,19 @@ export function InventoryManager({
     setOpen(false);
   }
 
-  async function remove(i: Item) {
-    if (!confirm(`Delete "${i.name}"?`)) return;
-    const res = await deleteItem(i.id);
+  async function confirmDelete() {
+    if (!toDelete) return;
+    const res = await deleteItem(toDelete.id);
     if (res.error) return toast({ title: "Delete failed", description: res.error, variant: "destructive" });
-    setItems((it) => it.filter((x) => x.id !== i.id));
+    setItems((it) => it.filter((x) => x.id !== toDelete.id));
     toast({ title: "Item deleted" });
+  }
+
+  function rowMenu(e: React.MouseEvent, item: Item) {
+    e.preventDefault();
+    const actions = [{ label: "View / edit", icon: "edit" as const, onClick: () => startEdit(item) }];
+    if (canDelete) actions.push({ label: "Delete", icon: "delete" as any, onClick: () => setToDelete(item), destructive: true } as any);
+    setCtx({ x: e.clientX, y: e.clientY, actions });
   }
 
   function markup(i: Item) {
@@ -91,58 +101,70 @@ export function InventoryManager({
               <TableRow>
                 <TableHead>Item</TableHead><TableHead>Cost</TableHead><TableHead>Charge</TableHead>
                 <TableHead>Markup</TableHead><TableHead>Stock</TableHead><TableHead>Source</TableHead>
-                {(canEdit || canDelete) && <TableHead></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((i) => {
                 const low = i.stock <= i.low_threshold;
                 return (
-                  <TableRow key={i.id}>
+                  <TableRow
+                    key={i.id}
+                    className="cursor-pointer"
+                    onClick={() => startEdit(i)}
+                    onContextMenu={(e) => rowMenu(e, i)}
+                  >
                     <TableCell className="font-medium">{i.name}</TableCell>
                     <TableCell>{fmtMoney(i.cost)}</TableCell>
                     <TableCell>{fmtMoney(i.charge)}</TableCell>
                     <TableCell>{markup(i)}</TableCell>
                     <TableCell><span className="mr-2">{i.stock}</span>{low && <Badge variant="warning">Low</Badge>}</TableCell>
                     <TableCell className="max-w-[160px] truncate text-sm text-muted-foreground">{i.source ?? "—"}</TableCell>
-                    {(canEdit || canDelete) && (
-                      <TableCell className="text-right whitespace-nowrap">
-                        {canEdit && <Button variant="ghost" size="sm" onClick={() => startEdit(i)}><Pencil className="h-3.5 w-3.5" /></Button>}
-                        {canDelete && <Button variant="ghost" size="sm" onClick={() => remove(i)}><Trash2 className="h-3.5 w-3.5" /></Button>}
-                      </TableCell>
-                    )}
                   </TableRow>
                 );
               })}
               {filtered.length === 0 && (
-                <TableRow><TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">No items found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">No items found.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{editing ? "Edit item" : "Add item"}</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>Cost (paid)</Label><Input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: +e.target.value })} /></div>
-              <div className="space-y-2"><Label>Charge (customer)</Label><Input type="number" value={form.charge} onChange={(e) => setForm({ ...form, charge: +e.target.value })} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>Stock count</Label><Input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: +e.target.value })} /></div>
-              <div className="space-y-2"><Label>Low-stock threshold</Label><Input type="number" value={form.low_threshold} onChange={(e) => setForm({ ...form, low_threshold: +e.target.value })} /></div>
-            </div>
-            <div className="space-y-2"><Label>Source (store name, address, or link)</Label><Input value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} /></div>
-          </div>
-          <DialogFooter>
+      <RowContextMenu state={ctx} onClose={() => setCtx(null)} />
+      <DeleteConfirm
+        open={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={confirmDelete}
+        itemLabel={toDelete?.name ?? "item"}
+      />
+
+      <SlideOver
+        open={open}
+        onClose={() => setOpen(false)}
+        title={editing ? "Edit item" : "Add item"}
+        footer={
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button onClick={save}>{editing ? "Save" : "Add"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2"><Label>Cost (paid)</Label><Input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: +e.target.value })} /></div>
+            <div className="space-y-2"><Label>Charge (customer)</Label><Input type="number" value={form.charge} onChange={(e) => setForm({ ...form, charge: +e.target.value })} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2"><Label>Stock count</Label><Input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: +e.target.value })} /></div>
+            <div className="space-y-2"><Label>Low-stock threshold</Label><Input type="number" value={form.low_threshold} onChange={(e) => setForm({ ...form, low_threshold: +e.target.value })} /></div>
+          </div>
+          <div className="space-y-2"><Label>Source (store name, address, or link)</Label><Input value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} /></div>
+          {editing && markup(editing) !== "—" && (
+            <p className="text-xs text-muted-foreground">Current markup: {markup(form as any)}</p>
+          )}
+        </div>
+      </SlideOver>
     </>
   );
 }

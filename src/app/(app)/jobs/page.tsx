@@ -14,7 +14,11 @@ export default async function JobsPage() {
   return (
     <>
       <PageHeader title="Jobs" description="All jobs, scheduling, and status." />
-      <JobsManager initialJobs={jobs as any[]} canEdit={can(user.isSuperadmin, user.permissions, "jobs.edit")} />
+      <JobsManager
+        initialJobs={jobs as any[]}
+        canEdit={can(user.isSuperadmin, user.permissions, "jobs.edit")}
+        canDelete={can(user.isSuperadmin, user.permissions, "jobs.delete")}
+      />
     </>
   );
 }

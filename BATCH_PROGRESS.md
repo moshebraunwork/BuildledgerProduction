@@ -26,12 +26,14 @@ DONE this session:
 - [x] **Employees page converted** to the new pattern: click row → slide-over edit; right-click → context menu; delete → typed confirmation. This is the reference implementation for the others.
 
 STILL TODO (apply the same pattern to the rest):
-- [ ] Inventory page → slide-over + context menu + typed delete
-- [ ] Jobs list → slide-over (note: jobs/[id] is a full page today; decide slide-over vs keep full page for the detail given its size)
-- [ ] Admin → Users → slide-over/context where it makes sense
-- [ ] Admin → Roles → slide-over instead of dialog
-- [ ] Job detail: replace its internal dialogs (punch, add item, add cost) with slide-overs or inline
-- [ ] Fold Invoices into Jobs and remove the standalone /invoices route (nav entry already removed)
+- [x] Inventory page → slide-over + context menu + typed delete (DONE)
+- [x] Jobs list → slide-over create + right-click context menu (Open/Delete) + search + status filter; row click opens full detail page (kept full page — detail is too dense for a slide-over). deleteJob action added.
+- [x] Admin → Users → left as inline controls (role dropdown + active switch). Already "no popups"; a slide-over would be worse UX here.
+- [x] Admin → Roles → slide-over instead of dialog, with per-group "select all / clear all", typed-name delete confirmation
+- [x] Fold Invoices into Jobs — standalone /invoices route REMOVED; invoice generate/send/PDF all live in the job detail Billing tab. Nav entry already gone.
+- [ ] Job detail internal dialogs (punch, add item, add cost) — still use the old Dialog component. Could convert to slide-overs/inline in a later pass; functional as-is.
+
+### Batch 2 status: substantially COMPLETE. Remaining nicety: convert the 3 dialogs inside job-detail.tsx. Everything builds clean.
 
 DEPLOY for this session: run migration `0004_employee_invites.sql` on Neon, then npm install/build/pm2 restart. Also set NEXT_PUBLIC_APP_URL=https://workstock.mobrauntech.com in .env.local so invite links point to the right place.
 
