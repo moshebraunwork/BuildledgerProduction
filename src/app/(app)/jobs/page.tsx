@@ -11,13 +11,30 @@ export default async function JobsPage() {
     from public.jobs where company_id = ${user.companyId}
     order by created_at desc
   `;
+
+  const c = (perm: string) => can(user.isSuperadmin, user.permissions, perm);
+
   return (
     <>
       <PageHeader title="Jobs" description="All jobs, scheduling, and status." />
       <JobsManager
         initialJobs={jobs as any[]}
-        canEdit={can(user.isSuperadmin, user.permissions, "jobs.edit")}
-        canDelete={can(user.isSuperadmin, user.permissions, "jobs.delete")}
+        canEdit={c("jobs.edit")}
+        canDelete={c("jobs.delete")}
+        perms={{
+          jobEdit: c("jobs.edit"),
+          jobDelete: c("jobs.delete"),
+          punchesView: c("punches.view"),
+          punchesManage: c("punches.manage"),
+          mediaView: c("media.view"),
+          mediaManage: c("media.manage"),
+          invoicesView: c("invoices.view"),
+          invoicesCreate: c("invoices.create"),
+          invoicesEdit: c("invoices.edit"),
+          invoicesSend: c("invoices.send"),
+          notesView: c("notes.view"),
+          notesEdit: c("notes.edit"),
+        }}
       />
     </>
   );

@@ -14,6 +14,7 @@ export function SlideOver({
   children,
   footer,
   width = "md",
+  layer = "base",
 }: {
   open: boolean;
   onClose: () => void;
@@ -21,7 +22,8 @@ export function SlideOver({
   description?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  width?: "sm" | "md" | "lg";
+  width?: "sm" | "md" | "lg" | "xl" | "full";
+  layer?: "base" | "nested";
 }) {
   // Close on Escape
   React.useEffect(() => {
@@ -31,12 +33,13 @@ export function SlideOver({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const widthClass = width === "lg" ? "max-w-2xl" : width === "sm" ? "max-w-sm" : "max-w-md";
+  const widthClass = width === "full" ? "w-full" : width === "xl" ? "max-w-5xl" : width === "lg" ? "max-w-2xl" : width === "sm" ? "max-w-sm" : "max-w-md";
+  const zClass = layer === "nested" ? "z-[60]" : "z-50";
 
   return (
     <div
       className={cn(
-        "fixed inset-0 z-50 transition-opacity duration-200",
+        `fixed inset-0 ${zClass} transition-opacity duration-200`,
         open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
       )}
       aria-hidden={!open}

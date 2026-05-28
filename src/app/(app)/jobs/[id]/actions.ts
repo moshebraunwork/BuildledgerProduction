@@ -139,3 +139,83 @@ export async function setJobStatus(jobId: string, status: string) {
   await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "job.status", entity: "job", entityId: jobId, detail: { status } });
   return { ok: true };
 }
+
+// ---- admin punch management ----
+export async function adminCreatePunch(params: {
+  jobId: string; employeeId: string; kind: string;
+  startedAt: string; endedAt: string | null;
+  note: string | null; startedPhotoUrl: string | null; endedPhotoUrl: string | null;
+}) {
+  const user = await requireJobAccess("punches.manage");
+  if (!user) return { error: "Forbidden" };
+  const rows = await sql`
+    insert into public.punches
+      (company_id, job_id, employee_id, kind, started_at, ended_at, note,
+       started_photo_url, ended_photo_url, edited_by, edited_at)
+    values
+      (${user.companyId}, ${params.jobId}, ${params.employeeId}, ${params.kind},
+       ${params.startedAt}, ${params.endedAt ?? null}, ${params.note},
+       ${params.startedPhotoUrl}, ${params.endedPhotoUrl}, ${user.id}, now())
+    returning *
+  `;
+  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.admin_create", entity: "punch", entityId: rows[0].id });
+  return { data: rows[0] };
+}
+
+export async function adminUpdatePunch(punchId: string, params: {
+  employeeId: string; kind: string;
+  startedAt: string; endedAt: string | null;
+  note: string | null; startedPhotoUrl: string | null; endedPhotoUrl: string | null;
+}) {
+  const user = await requireJobAccess("punches.manage");
+  if (!user) return { error: "Forbidden" };
+  await sql`
+    update public.punches set
+      employee_id = ${params.employeeId},
+      kind = ${params.kind},
+      started_at = ${params.startedAt},
+      ended_at = ${params.endedAt ?? null},
+      note = ${params.note},
+      started_photo_url = ${params.startedPhotoUrl},
+      ended_photo_url = ${params.endedPhotoUrl},
+      edited_by = ${user.id},
+      edited_at = now()
+    where id = ${punchId}
+  `;
+  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.admin_edit", entity: "punch", entityId: punchId });
+  return { ok: true };
+}
+
+export async function adminDeletePunchEndTime(punchId: string) {
+  const user = await requireJobAccess("punches.manage");
+  if (!user) return { error: "Forbidden" };
+  await sql`
+    update public.punches set ended_at = null, ended_photo_url = null, edited_by = ${user.id}, edited_at = now()
+    where id = ${punchId}
+  `;
+  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.admin_remove_end", entity: "punch", entityId: punchId });
+  return { ok: true };
+}
+
+export async function adminDeletePunch(punchId: string) {
+  const user = await requireJobAccess("punches.manage");
+  if (!user) return { error: "Forbidden" };
+  // Safety: only delete if punch has no end time
+  const rows = await sql`select ended_at from public.punches where id = ${punchId} limit 1`;
+  if (rows.length && rows[0].ended_at) return { error: "Remove end time first before deleting this punch." };
+  await sql`delete from public.punches where id = ${punchId}`;
+  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.admin_delete", entity: "punch", entityId: punchId });
+  return { ok: true };
+}
+
+// ---- job notes ----
+export async function saveJobNotes(jobId: string, bodyHtml: string) {
+  const user = await requireJobAccess("notes.edit");
+  if (!user) return { error: "Forbidden" };
+  await sql`
+    insert into public.job_notes (company_id, job_id, body_html, updated_at, updated_by)
+    values (${user.companyId}, ${jobId}, ${bodyHtml}, now(), ${user.id})
+    on conflict (job_id) do update set body_html = ${bodyHtml}, updated_at = now(), updated_by = ${user.id}
+  `;
+  return { ok: true };
+}

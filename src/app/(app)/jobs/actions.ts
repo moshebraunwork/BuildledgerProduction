@@ -8,7 +8,7 @@ import { audit } from "@/lib/audit";
 interface JobInput {
   title: string; place: string | null; scheduled_date: string | null;
   customer_name: string | null; customer_email: string | null;
-  estimate: number; billing_mode: string;
+  estimate: number; billing_mode: string; billing_rate?: number | null;
 }
 
 export async function createJob(input: JobInput) {
@@ -24,10 +24,72 @@ export async function createJob(input: JobInput) {
   return { data: rows[0] };
 }
 
+export async function updateJob(id: string, input: JobInput) {
+  const user = await getCurrentUser();
+  if (!user || !can(user.isSuperadmin, user.permissions, "jobs.edit")) return { error: "Forbidden" };
+  const rows = await sql`
+    update public.jobs set
+      title = ${input.title},
+      place = ${input.place},
+      scheduled_date = ${input.scheduled_date},
+      customer_name = ${input.customer_name},
+      customer_email = ${input.customer_email},
+      estimate = ${input.estimate},
+      billing_mode = ${input.billing_mode},
+      billing_rate = ${input.billing_rate ?? null},
+      updated_at = now()
+    where id = ${id} and company_id = ${user.companyId}
+    returning *
+  `;
+  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "job.update", entity: "job", entityId: id });
+  return { data: rows[0] };
+}
+
 export async function deleteJob(id: string) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "jobs.delete")) return { error: "Forbidden" };
   await sql`delete from public.jobs where id = ${id} and company_id = ${user.companyId}`;
   await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "job.delete", entity: "job", entityId: id });
   return { ok: true };
+}
+
+export async function getJobDetail(jobId: string) {
+  const user = await getCurrentUser();
+  if (!user || !can(user.isSuperadmin, user.permissions, "jobs.view")) return { error: "Forbidden" };
+
+  const [jobRows, crewRows, allEmployees, jobItems, catalog, costs, punches, companyRows, invoices, notesRows] =
+    await Promise.all([
+      sql`select * from public.jobs where id = ${jobId} and company_id = ${user.companyId} limit 1`,
+      sql`select w.id, w.name, w.role_title, w.pay_rate, w.require_punch_photo
+          from public.job_employees jw join public.employees w on w.id = jw.employee_id
+          where jw.job_id = ${jobId}`,
+      sql`select id, name, role_title, pay_rate, require_punch_photo from public.employees
+          where company_id = ${user.companyId} order by name`,
+      sql`select * from public.job_items where job_id = ${jobId}`,
+      sql`select * from public.items where company_id = ${user.companyId} order by name`,
+      sql`select * from public.job_costs where job_id = ${jobId}`,
+      sql`select * from public.punches where job_id = ${jobId} order by started_at desc`,
+      sql`select * from public.companies where id = ${user.companyId} limit 1`,
+      sql`select id, number, status, total, created_at, subtotal, tax, line_items,
+              customer_name, customer_email, notes, due_date, file_name
+          from public.invoices where job_id = ${jobId} order by created_at desc`,
+      sql`select body_html, updated_at, updated_by from public.job_notes where job_id = ${jobId} limit 1`,
+    ]);
+
+  if (!jobRows.length) return { error: "Not found" };
+
+  return {
+    data: {
+      job: jobRows[0],
+      crew: crewRows,
+      allEmployees,
+      jobItems,
+      catalog,
+      costs,
+      punches,
+      company: companyRows[0] ?? null,
+      invoices,
+      notes: notesRows[0] ?? null,
+    },
+  };
 }

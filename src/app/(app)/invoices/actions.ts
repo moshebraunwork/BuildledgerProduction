@@ -55,3 +55,15 @@ export async function updateInvoice(
 
   return { ok: true };
 }
+
+export async function deleteInvoice(invoiceId: string) {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Unauthorized" };
+  if (!can(user.isSuperadmin, user.permissions, "invoices.edit")) return { error: "Forbidden" };
+  const rows = await sql`select id, status from public.invoices where id = ${invoiceId} and company_id = ${user.companyId} limit 1`;
+  if (!rows[0]) return { error: "Invoice not found" };
+  if (rows[0].status !== "draft") return { error: "Only draft invoices can be deleted" };
+  await sql`delete from public.invoices where id = ${invoiceId}`;
+  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "invoice.delete", entity: "invoice", entityId: invoiceId });
+  return { ok: true };
+}
