@@ -8,9 +8,10 @@ export default async function InvoicesPage() {
   const user = await requirePermission("invoices.view");
 
   const [invoices, companyRows] = await Promise.all([
-    sql`select id, number, customer_name, customer_email, subtotal, tax, total, line_items, status, sent_at, created_at, job_id
+    sql`select id, number, customer_name, customer_email, subtotal, tax, total, line_items,
+               notes, due_date, status, sent_at, created_at, job_id
         from public.invoices where company_id = ${user.companyId} order by created_at desc`,
-    sql`select * from public.companies where id = ${user.companyId} limit 1`,
+    sql`select id, name, invoice_from, logo_url from public.companies where id = ${user.companyId} limit 1`,
   ]);
 
   return (
@@ -20,6 +21,7 @@ export default async function InvoicesPage() {
         initialInvoices={invoices as any[]}
         company={(companyRows as any[])[0] ?? null}
         canSend={can(user.isSuperadmin, user.permissions, "invoices.send")}
+        canEdit={can(user.isSuperadmin, user.permissions, "invoices.edit")}
       />
     </>
   );

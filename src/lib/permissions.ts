@@ -52,6 +52,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     perms: [
       { key: "invoices.view", label: "View invoices" },
       { key: "invoices.create", label: "Generate invoices" },
+      { key: "invoices.edit", label: "Edit invoices" },
       { key: "invoices.send", label: "Send invoices by email" },
     ],
   },
