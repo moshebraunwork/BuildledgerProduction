@@ -19,7 +19,6 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1410,60 +1409,68 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
         </div>
       )}
 
-      {/* ========== ITEM / COST DIALOGS ========== */}
-      <Dialog open={itemDialog} onOpenChange={setItemDialog}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add item to job</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Item</Label>
-              <Select value={pickItem} onValueChange={setPickItem}>
-                <SelectTrigger><SelectValue placeholder="Choose from catalog" /></SelectTrigger>
-                <SelectContent>
-                  {catalog.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      <span className={c.stock === 0 ? "text-destructive" : ""}>{c.name}</span>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {c.stock === 0 ? "⚠ out of stock" : `${c.stock} in stock`}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {pickItem && catalog.find((c) => c.id === pickItem)?.stock === 0 && (
-                <p className="text-xs text-destructive flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" /> This item is out of stock. Adding it will set stock below zero.
-                </p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Quantity</Label>
-              <Input type="number" min={1} value={pickQty} onChange={(e) => setPickQty(Math.max(1, +e.target.value))} className="min-h-[44px]" />
-            </div>
-          </div>
-          <DialogFooter>
+      {/* ========== ITEM / COST SLIDE-OVERS ========== */}
+      <SlideOver
+        open={itemDialog}
+        onClose={() => setItemDialog(false)}
+        title="Add item to job"
+        layer="nested"
+        footer={
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setItemDialog(false)}>Cancel</Button>
             <Button onClick={addItem} disabled={!pickItem}>Add</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={costDialog} onOpenChange={setCostDialog}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add one-time cost</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2"><Label>Label</Label><Input value={costForm.label} onChange={(e) => setCostForm({ ...costForm, label: e.target.value })} placeholder="e.g. Dumpster rental" className="min-h-[44px]" /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>Cost (paid)</Label><Input type="number" value={costForm.cost} onChange={(e) => setCostForm({ ...costForm, cost: +e.target.value })} className="min-h-[44px]" /></div>
-              <div className="space-y-2"><Label>Charge (customer)</Label><Input type="number" value={costForm.charge} onChange={(e) => setCostForm({ ...costForm, charge: +e.target.value })} className="min-h-[44px]" /></div>
-            </div>
           </div>
-          <DialogFooter>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Item</Label>
+            <Select value={pickItem} onValueChange={setPickItem}>
+              <SelectTrigger><SelectValue placeholder="Choose from catalog" /></SelectTrigger>
+              <SelectContent>
+                {catalog.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    <span className={c.stock === 0 ? "text-destructive" : ""}>{c.name}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {c.stock === 0 ? "⚠ out of stock" : `${c.stock} in stock`}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {pickItem && catalog.find((c) => c.id === pickItem)?.stock === 0 && (
+              <p className="text-xs text-destructive flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" /> This item is out of stock. Adding it will set stock below zero.
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label>Quantity</Label>
+            <Input type="number" min={1} value={pickQty} onChange={(e) => setPickQty(Math.max(1, +e.target.value))} className="min-h-[44px]" />
+          </div>
+        </div>
+      </SlideOver>
+
+      <SlideOver
+        open={costDialog}
+        onClose={() => setCostDialog(false)}
+        title="Add one-time cost"
+        layer="nested"
+        footer={
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setCostDialog(false)}>Cancel</Button>
             <Button onClick={addCost}>Add cost</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2"><Label>Label</Label><Input value={costForm.label} onChange={(e) => setCostForm({ ...costForm, label: e.target.value })} placeholder="e.g. Dumpster rental" className="min-h-[44px]" /></div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2"><Label>Cost (paid)</Label><Input type="number" value={costForm.cost} onChange={(e) => setCostForm({ ...costForm, cost: +e.target.value })} className="min-h-[44px]" /></div>
+            <div className="space-y-2"><Label>Charge (customer)</Label><Input type="number" value={costForm.charge} onChange={(e) => setCostForm({ ...costForm, charge: +e.target.value })} className="min-h-[44px]" /></div>
+          </div>
+        </div>
+      </SlideOver>
 
       {/* Item delete confirmation */}
       <DeleteConfirm

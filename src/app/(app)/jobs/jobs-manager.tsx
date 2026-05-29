@@ -91,7 +91,7 @@ export function JobsManager({
     if (job.status !== "complete" && perms.jobEdit) {
       actions.push({
         label: "Mark as complete",
-        icon: "view",
+        icon: "check",
         onClick: async () => {
           await setJobStatus(job.id, "complete");
           setJobs((jj) => jj.map((j) => j.id === job.id ? { ...j, status: "complete" } : j));

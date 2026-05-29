@@ -146,7 +146,7 @@ export function UsersManager({ initialUsers, roles }: { initialUsers: UserRow[];
   async function doInvite() {
     if (!inviteEmail.trim()) return toast({ title: "Email required", variant: "destructive" });
     setInviting(true);
-    const res = await inviteUser(inviteEmail.trim(), inviteRoleId || null);
+    const res = await inviteUser(inviteEmail.trim(), (inviteRoleId && inviteRoleId !== "__none__") ? inviteRoleId : null);
     setInviting(false);
     if (res.error) return toast({ title: "Invite failed", description: res.error, variant: "destructive" });
     setInviteOpen(false);
@@ -298,7 +298,7 @@ export function UsersManager({ initialUsers, roles }: { initialUsers: UserRow[];
             }}>
               <SelectTrigger><SelectValue placeholder="No role assigned yet" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">No role</SelectItem>
+                <SelectItem value="__none__">No role</SelectItem>
                 {roles.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
                 <SelectItem value="__new__" className="text-primary font-medium border-t mt-1">
                   + Add new role

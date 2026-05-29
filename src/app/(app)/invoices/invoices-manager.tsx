@@ -218,10 +218,10 @@ export function InvoicesManager({
     if (canEdit && inv.status === "draft") {
       actions.push({ label: "Edit", icon: "edit", onClick: () => { openViewing(inv); setTimeout(startEdit, 50); } });
     }
-    actions.push({ label: "Download PDF", icon: "view", onClick: () => downloadPdf(inv) });
-    actions.push({ label: "Print", icon: "view", onClick: () => printInvoice(inv) });
+    actions.push({ label: "Download PDF", icon: "download", onClick: () => downloadPdf(inv) });
+    actions.push({ label: "Print", icon: "print", onClick: () => printInvoice(inv) });
     if (canSend) {
-      actions.push({ label: "Send invoice", icon: "view", onClick: () => openSendDialog(inv) });
+      actions.push({ label: "Send invoice", icon: "send", onClick: () => openSendDialog(inv) });
     }
     if (canDelete && inv.status === "draft") {
       actions.push({ label: "Delete", icon: "delete", onClick: () => setToDelete(inv), destructive: true });

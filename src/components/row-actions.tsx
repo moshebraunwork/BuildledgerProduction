@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { Eye, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { Eye, Pencil, Trash2, AlertTriangle, CheckCircle2, Download, Printer, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -15,7 +15,7 @@ export interface ContextMenuState {
 }
 export interface ContextAction {
   label: string;
-  icon?: "view" | "edit" | "delete";
+  icon?: "view" | "edit" | "delete" | "check" | "download" | "print" | "send";
   onClick: () => void;
   destructive?: boolean;
 }
@@ -45,7 +45,11 @@ export function RowContextMenu({
   const iconFor = (i?: string) =>
     i === "view" ? <Eye className="h-4 w-4" /> :
     i === "edit" ? <Pencil className="h-4 w-4" /> :
-    i === "delete" ? <Trash2 className="h-4 w-4" /> : null;
+    i === "delete" ? <Trash2 className="h-4 w-4" /> :
+    i === "check" ? <CheckCircle2 className="h-4 w-4" /> :
+    i === "download" ? <Download className="h-4 w-4" /> :
+    i === "print" ? <Printer className="h-4 w-4" /> :
+    i === "send" ? <Send className="h-4 w-4" /> : null;
 
   // Keep the menu on-screen
   const left = Math.min(state.x, (typeof window !== "undefined" ? window.innerWidth : 9999) - 200);
