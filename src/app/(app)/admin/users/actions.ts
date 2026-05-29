@@ -77,6 +77,41 @@ export async function getUserSessions(clerkUserId: string) {
   }
 }
 
+export async function updateUserEmail(userId: string, newEmail: string) {
+  const user = await getCurrentUser();
+  if (!user || !can(user.isSuperadmin, user.permissions, "admin.users")) return { error: "Forbidden" };
+  const trimmed = newEmail.trim().toLowerCase();
+  if (!trimmed) return { error: "Email required" };
+  await sql`update public.users set email = ${trimmed} where id = ${userId} and company_id = ${user.companyId}`;
+  await audit({
+    companyId: user.companyId, actorId: user.id, actorEmail: user.email,
+    action: "user.update_email", entity: "user", entityId: userId,
+    detail: { newEmail: trimmed },
+  });
+  return { ok: true };
+}
+
+export async function reinviteUser(email: string) {
+  const user = await getCurrentUser();
+  if (!user || !can(user.isSuperadmin, user.permissions, "admin.users")) return { error: "Forbidden" };
+  const client = await clerkClient();
+  try {
+    await client.invitations.createInvitation({
+      emailAddress: email,
+      ignoreExisting: true,
+      redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/sign-in`,
+    });
+  } catch (e: any) {
+    return { error: e?.errors?.[0]?.message ?? "Failed to send invitation" };
+  }
+  await audit({
+    companyId: user.companyId, actorId: user.id, actorEmail: user.email,
+    action: "user.reinvite", entity: "invitation", entityId: email,
+    detail: { email },
+  });
+  return { ok: true };
+}
+
 export async function inviteUser(email: string, roleId: string | null) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "admin.users")) return { error: "Forbidden" };

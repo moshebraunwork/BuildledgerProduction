@@ -12,8 +12,8 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SlideOver } from "@/components/slide-over";
 import { useToast } from "@/components/ui/use-toast";
-import { Search, ArrowUpDown, ArrowUp, ArrowDown, Plus, UserCheck, UserX, Clock, Monitor, AlertTriangle } from "lucide-react";
-import { setUserRole, setUserActive, setUserFullName, getUserLogs, getUserSessions, inviteUser } from "./actions";
+import { Search, ArrowUpDown, ArrowUp, ArrowDown, Plus, UserCheck, AlertTriangle, Mail } from "lucide-react";
+import { setUserRole, setUserActive, setUserFullName, getUserLogs, getUserSessions, inviteUser, updateUserEmail, reinviteUser } from "./actions";
 import { fmtDate } from "@/lib/utils";
 
 interface UserRow {
@@ -49,6 +49,9 @@ export function UsersManager({ initialUsers, roles }: { initialUsers: UserRow[];
   const [loadingSessions, setLoadingSessions] = React.useState(false);
   const [editName, setEditName] = React.useState("");
   const [savingName, setSavingName] = React.useState(false);
+  const [editEmail, setEditEmail] = React.useState("");
+  const [savingEmail, setSavingEmail] = React.useState(false);
+  const [reinviting, setReinviting] = React.useState(false);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -112,9 +115,30 @@ export function UsersManager({ initialUsers, roles }: { initialUsers: UserRow[];
     toast({ title: "Name updated" });
   }
 
+  async function saveEmail() {
+    if (!detailUser || !editEmail.trim()) return;
+    setSavingEmail(true);
+    const res = await updateUserEmail(detailUser.id, editEmail);
+    setSavingEmail(false);
+    if (res.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
+    setUsers((u) => u.map((x) => (x.id === detailUser.id ? { ...x, email: editEmail.trim() } : x)));
+    setDetailUser((d) => d ? { ...d, email: editEmail.trim() } : d);
+    toast({ title: "Email updated" });
+  }
+
+  async function doReinvite() {
+    if (!detailUser) return;
+    setReinviting(true);
+    const res = await reinviteUser(editEmail.trim() || detailUser.email);
+    setReinviting(false);
+    if (res.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
+    toast({ title: "Invitation sent", description: `Sent to ${editEmail.trim() || detailUser.email}` });
+  }
+
   function openDetail(u: UserRow) {
     setDetailUser(u);
     setEditName(u.full_name ?? "");
+    setEditEmail(u.email);
     setDetailTab("info");
     setDetailLogs([]);
     setDetailSessions([]);
@@ -336,9 +360,34 @@ export function UsersManager({ initialUsers, roles }: { initialUsers: UserRow[];
             {/* Info tab */}
             {detailTab === "info" && (
               <div className="space-y-5">
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email</p>
-                  <p className="text-sm">{detailUser.email}</p>
+                <div className="space-y-2">
+                  <Label>Login email</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      placeholder="user@example.com"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={saveEmail}
+                      disabled={savingEmail || editEmail.trim() === detailUser.email}
+                    >
+                      {savingEmail ? "…" : "Save"}
+                    </Button>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs h-7 px-2"
+                    disabled={reinviting || !editEmail.trim()}
+                    onClick={doReinvite}
+                  >
+                    <Mail className="h-3 w-3 mr-1" />
+                    {reinviting ? "Sending…" : "Send / resend login invite"}
+                  </Button>
                 </div>
                 <div className="space-y-2">
                   <Label>Display name</Label>

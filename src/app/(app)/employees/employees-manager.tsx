@@ -254,30 +254,32 @@ export function EmployeesManager({
           {editing && (
             <div className="space-y-3 rounded-md border p-3">
               <div className="text-sm font-medium">System access</div>
-              {editing.invite_status === "accepted" ? (
-                <p className="text-sm text-emerald-600">This employee has accepted their invitation and can log in.</p>
-              ) : editing.invite_status === "pending" ? (
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">Invitation sent to {editing.invite_email} — not accepted yet.</p>
-                  <Button size="sm" variant="outline" onClick={() => doResend(editing)}><Send className="h-3.5 w-3.5 mr-1" /> Resend invitation</Button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label>Add as system user</Label>
-                  <p className="text-xs text-muted-foreground">They will automatically receive a login invitation.</p>
-                  <div className="flex gap-2">
-                    <Input
-                      type="email"
-                      value={form.invite_email}
-                      onChange={(e) => setForm({ ...form, invite_email: e.target.value })}
-                      placeholder="employee@email.com"
-                    />
-                    <Button size="sm" onClick={() => editing && form.invite_email && sendInvite(editing, form.invite_email.trim())}>
-                      <Mail className="h-3.5 w-3.5 mr-1" /> Send invite
-                    </Button>
-                  </div>
-                </div>
+              {editing.invite_status === "accepted" && (
+                <p className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Active — this employee can log in.</p>
               )}
+              {editing.invite_status === "pending" && (
+                <p className="text-xs text-muted-foreground">Invite pending — not accepted yet.</p>
+              )}
+              <div className="space-y-1">
+                <Label>Login email</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="email"
+                    value={form.invite_email}
+                    onChange={(e) => setForm({ ...form, invite_email: e.target.value })}
+                    placeholder="employee@email.com"
+                  />
+                  <Button
+                    size="sm"
+                    disabled={!form.invite_email}
+                    onClick={() => editing && form.invite_email && sendInvite(editing, form.invite_email.trim())}
+                  >
+                    <Mail className="h-3.5 w-3.5 mr-1" />
+                    {editing.invite_status === "pending" ? "Resend" : editing.invite_status === "accepted" ? "Re-invite" : "Invite"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Change the email and click Invite / Resend to send a new invitation.</p>
+              </div>
             </div>
           )}
         </div>
