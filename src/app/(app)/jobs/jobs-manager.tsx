@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { createJob, deleteJob } from "./actions";
+import { setJobStatus } from "./[id]/actions";
 import { JobSlideOver, type JobSlideOverPerms } from "./job-slide-over";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import { SlideOver } from "@/components/slide-over";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney, fmtDate } from "@/lib/utils";
-import { Plus, Search, MoreVertical } from "lucide-react";
+import { Plus, Search, MoreVertical, CheckCircle } from "lucide-react";
 
 interface Job {
   id: string; title: string; place: string | null; scheduled_date: string | null;
@@ -87,6 +88,17 @@ export function JobsManager({
       { label: "View", icon: "view", onClick: () => openJob(job, "overview") },
       { label: "Edit", icon: "edit", onClick: () => openJob(job, "overview") },
     ];
+    if (job.status !== "complete" && perms.jobEdit) {
+      actions.push({
+        label: "Mark as complete",
+        icon: "view",
+        onClick: async () => {
+          await setJobStatus(job.id, "complete");
+          setJobs((jj) => jj.map((j) => j.id === job.id ? { ...j, status: "complete" } : j));
+          toast({ title: "Marked complete" });
+        },
+      });
+    }
     if (canDelete) {
       actions.push({ label: "Delete", icon: "delete", onClick: () => setToDelete(job), destructive: true });
     }

@@ -13,14 +13,14 @@ export async function saveProfile(fullName: string, theme: string) {
 }
 
 export async function saveCompany(input: {
-  name: string; invoice_from: string | null; default_rate: number; tax_rate: number; logo_url?: string | null;
+  name: string; invoice_from: string | null; default_rate: number; tax_rate: number; logo_url?: string | null; contact_email?: string | null;
 }) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "admin.company")) return { error: "Forbidden" };
   await sql`
     update public.companies set name = ${input.name}, invoice_from = ${input.invoice_from},
       default_rate = ${input.default_rate}, tax_rate = ${input.tax_rate},
-      logo_url = ${input.logo_url ?? null}
+      logo_url = ${input.logo_url ?? null}, contact_email = ${input.contact_email ?? null}
     where id = ${user.companyId}
   `;
   await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "company.update", entity: "company", entityId: user.companyId });

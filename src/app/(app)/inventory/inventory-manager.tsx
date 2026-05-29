@@ -11,13 +11,16 @@ import { SlideOver } from "@/components/slide-over";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney } from "@/lib/utils";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { createItem, updateItem, deleteItem } from "./actions";
 
 interface Item {
   id: string; name: string; cost: number; charge: number;
   source: string | null; stock: number; low_threshold: number;
 }
+
+type SortKey = "name" | "cost" | "charge" | "stock";
+type SortDir = "asc" | "desc";
 
 const blank = { name: "", cost: 0, charge: 0, source: "", stock: 0, low_threshold: 0 };
 
@@ -29,13 +32,43 @@ export function InventoryManager({
   const { toast } = useToast();
   const [items, setItems] = React.useState<Item[]>(initialItems);
   const [q, setQ] = React.useState("");
+  const [sortKey, setSortKey] = React.useState<SortKey>("name");
+  const [sortDir, setSortDir] = React.useState<SortDir>("asc");
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Item | null>(null);
   const [form, setForm] = React.useState<typeof blank>(blank);
   const [ctx, setCtx] = React.useState<ContextMenuState | null>(null);
   const [toDelete, setToDelete] = React.useState<Item | null>(null);
 
-  const filtered = items.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("asc"); }
+  }
+
+  function SortIcon({ col }: { col: SortKey }) {
+    if (sortKey !== col) return <ArrowUpDown className="ml-1 h-3.5 w-3.5 inline opacity-40" />;
+    return sortDir === "asc"
+      ? <ArrowUp className="ml-1 h-3.5 w-3.5 inline" />
+      : <ArrowDown className="ml-1 h-3.5 w-3.5 inline" />;
+  }
+
+  const filtered = React.useMemo(() => {
+    const q2 = q.toLowerCase();
+    const list = items.filter((i) =>
+      i.name.toLowerCase().includes(q2) ||
+      (i.source ?? "").toLowerCase().includes(q2)
+    );
+    list.sort((a, b) => {
+      let av: string | number = a[sortKey];
+      let bv: string | number = b[sortKey];
+      if (typeof av === "string") av = av.toLowerCase();
+      if (typeof bv === "string") bv = bv.toLowerCase();
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [items, q, sortKey, sortDir]);
 
   function startNew() { setEditing(null); setForm(blank); setOpen(true); }
   function startEdit(i: Item) {
@@ -84,6 +117,8 @@ export function InventoryManager({
     return `${Math.round(((i.charge - i.cost) / i.cost) * 100)}%`;
   }
 
+  const thClass = "cursor-pointer select-none hover:text-foreground whitespace-nowrap";
+
   return (
     <>
       <div className="mb-4 flex items-center justify-between gap-2">
@@ -99,13 +134,25 @@ export function InventoryManager({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Item</TableHead><TableHead>Cost</TableHead><TableHead>Charge</TableHead>
-                <TableHead>Markup</TableHead><TableHead>Stock</TableHead><TableHead>Source</TableHead>
+                <TableHead className={thClass} onClick={() => toggleSort("name")}>
+                  Item <SortIcon col="name" />
+                </TableHead>
+                <TableHead className={thClass} onClick={() => toggleSort("cost")}>
+                  Cost <SortIcon col="cost" />
+                </TableHead>
+                <TableHead className={thClass} onClick={() => toggleSort("charge")}>
+                  Charge <SortIcon col="charge" />
+                </TableHead>
+                <TableHead>Markup</TableHead>
+                <TableHead className={thClass} onClick={() => toggleSort("stock")}>
+                  Stock <SortIcon col="stock" />
+                </TableHead>
+                <TableHead>Source</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((i) => {
-                const low = i.stock <= i.low_threshold;
+                const low = i.stock > 0 && i.stock <= i.low_threshold;
                 return (
                   <TableRow
                     key={i.id}
@@ -117,7 +164,10 @@ export function InventoryManager({
                     <TableCell>{fmtMoney(i.cost)}</TableCell>
                     <TableCell>{fmtMoney(i.charge)}</TableCell>
                     <TableCell>{markup(i)}</TableCell>
-                    <TableCell><span className="mr-2">{i.stock}</span>{low && <Badge variant="warning">Low</Badge>}</TableCell>
+                    <TableCell>
+                      <span className="mr-2">{i.stock}</span>
+                      {i.stock === 0 ? <Badge variant="destructive">Out of stock</Badge> : low ? <Badge variant="warning">Low</Badge> : null}
+                    </TableCell>
                     <TableCell className="max-w-[160px] truncate text-sm text-muted-foreground">{i.source ?? "—"}</TableCell>
                   </TableRow>
                 );

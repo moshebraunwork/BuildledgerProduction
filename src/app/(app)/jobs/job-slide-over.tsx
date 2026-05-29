@@ -127,27 +127,13 @@ function NotesEditor({
   return (
     <div className="space-y-2">
       {canEdit && (
-        <div className="flex flex-wrap gap-1 rounded-md border bg-muted/40 p-1">
-          {[
-            { label: "B", action: () => editor?.chain().focus().toggleBold().run(), active: editor?.isActive("bold") },
-            { label: "I", action: () => editor?.chain().focus().toggleItalic().run(), active: editor?.isActive("italic") },
-            { label: "U̲", action: () => editor?.chain().focus().toggleStrike().run(), active: editor?.isActive("strike") },
-            { label: "H2", action: () => editor?.chain().focus().toggleHeading({ level: 2 }).run(), active: editor?.isActive("heading", { level: 2 }) },
-            { label: "• List", action: () => editor?.chain().focus().toggleBulletList().run(), active: editor?.isActive("bulletList") },
-            { label: "1. List", action: () => editor?.chain().focus().toggleOrderedList().run(), active: editor?.isActive("orderedList") },
-          ].map((b) => (
-            <button
-              key={b.label}
-              type="button"
-              onClick={b.action}
-              className={`rounded px-2 py-1 text-xs font-medium hover:bg-background ${b.active ? "bg-background shadow-sm" : ""}`}
-            >
-              {b.label}
-            </button>
-          ))}
+        <div className="flex gap-1 rounded-md border bg-muted/40 p-1 w-fit">
+          <button type="button" onClick={() => editor?.chain().focus().toggleBold().run()} className={`rounded px-2.5 py-1 text-sm font-bold transition-colors hover:bg-background ${editor?.isActive("bold") ? "bg-background shadow-sm" : "text-muted-foreground"}`}>B</button>
+          <button type="button" onClick={() => editor?.chain().focus().toggleItalic().run()} className={`rounded px-2.5 py-1 text-sm italic transition-colors hover:bg-background ${editor?.isActive("italic") ? "bg-background shadow-sm" : "text-muted-foreground"}`}>I</button>
+          <button type="button" onClick={() => editor?.chain().focus().toggleStrike().run()} className={`rounded px-2.5 py-1 text-sm underline transition-colors hover:bg-background ${editor?.isActive("strike") ? "bg-background shadow-sm" : "text-muted-foreground"}`}>U</button>
         </div>
       )}
-      <div className="min-h-[200px] rounded-md border bg-background p-3 prose prose-sm max-w-none focus-within:ring-1 focus-within:ring-ring">
+      <div className="min-h-[200px] rounded-md border bg-background p-3 prose prose-sm max-w-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[180px]">
         <EditorContent editor={editor} />
       </div>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -488,6 +474,8 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
   const [pickQty, setPickQty] = React.useState(1);
   const [costDialog, setCostDialog] = React.useState(false);
   const [costForm, setCostForm] = React.useState({ label: "", cost: 0, charge: 0 });
+  const [deleteItemTarget, setDeleteItemTarget] = React.useState<JobItem | null>(null);
+  const [deleteCostTarget, setDeleteCostTarget] = React.useState<JobCost | null>(null);
 
   async function addItem() {
     if (!job) return;
@@ -934,7 +922,7 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
                               <TableCell>{fmtMoney(it.charge * it.qty)}</TableCell>
                               <TableCell><Checkbox checked={!it.excluded} onCheckedChange={() => toggleItemExcluded(it)} /></TableCell>
                               <TableCell className="text-right">
-                                {perms.jobEdit && <Button size="sm" variant="ghost" onClick={() => removeItem(it)}><Trash2 className="h-3.5 w-3.5" /></Button>}
+                                {perms.jobEdit && <Button size="sm" variant="ghost" onClick={() => setDeleteItemTarget(it)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -966,7 +954,7 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
                               <TableCell>{fmtMoney(c.charge)}</TableCell>
                               <TableCell><Checkbox checked={!c.excluded} onCheckedChange={() => toggleCostExcluded(c)} /></TableCell>
                               <TableCell className="text-right">
-                                {perms.jobEdit && <Button size="sm" variant="ghost" onClick={() => removeCost(c)}><Trash2 className="h-3.5 w-3.5" /></Button>}
+                                {perms.jobEdit && <Button size="sm" variant="ghost" onClick={() => setDeleteCostTarget(c)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -1432,9 +1420,21 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
               <Select value={pickItem} onValueChange={setPickItem}>
                 <SelectTrigger><SelectValue placeholder="Choose from catalog" /></SelectTrigger>
                 <SelectContent>
-                  {catalog.map((c) => <SelectItem key={c.id} value={c.id}>{c.name} ({c.stock} in stock)</SelectItem>)}
+                  {catalog.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      <span className={c.stock === 0 ? "text-destructive" : ""}>{c.name}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {c.stock === 0 ? "⚠ out of stock" : `${c.stock} in stock`}
+                      </span>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              {pickItem && catalog.find((c) => c.id === pickItem)?.stock === 0 && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" /> This item is out of stock. Adding it will set stock below zero.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Quantity</Label>
@@ -1464,6 +1464,22 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Item delete confirmation */}
+      <DeleteConfirm
+        open={!!deleteItemTarget}
+        onClose={() => setDeleteItemTarget(null)}
+        onConfirm={async () => { if (deleteItemTarget) await removeItem(deleteItemTarget); setDeleteItemTarget(null); }}
+        itemLabel={`item "${deleteItemTarget?.name}"`}
+      />
+
+      {/* Cost delete confirmation */}
+      <DeleteConfirm
+        open={!!deleteCostTarget}
+        onClose={() => setDeleteCostTarget(null)}
+        onConfirm={async () => { if (deleteCostTarget) await removeCost(deleteCostTarget); setDeleteCostTarget(null); }}
+        itemLabel={`cost "${deleteCostTarget?.label}"`}
+      />
     </>
   );
 }

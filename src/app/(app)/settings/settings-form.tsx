@@ -16,13 +16,14 @@ export function UserSettingsForm({ theme, fullName }: { theme: string; fullName:
   const [name, setName] = React.useState(fullName ?? "");
   const [themePref, setThemePref] = React.useState(theme);
 
+  const isDirty = name !== (fullName ?? "") || themePref !== theme;
+
   async function onSave() {
     const res = await saveProfile(name, themePref);
     if (res.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
     toast({ title: "Saved" });
   }
 
-  // Apply immediately so the user sees the change live; persisted on Save.
   function onThemeChange(value: string) {
     setThemePref(value);
     setTheme(value);
@@ -48,7 +49,7 @@ export function UserSettingsForm({ theme, fullName }: { theme: string; fullName:
               </SelectContent>
             </Select>
           </div>
-          <Button onClick={onSave}>Save</Button>
+          <Button onClick={onSave} disabled={!isDirty}>Save{isDirty ? " (unsaved changes)" : ""}</Button>
         </CardContent>
       </Card>
     </div>

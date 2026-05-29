@@ -22,6 +22,7 @@ export default async function InvoicesPage() {
         company={(companyRows as any[])[0] ?? null}
         canSend={can(user.isSuperadmin, user.permissions, "invoices.send")}
         canEdit={can(user.isSuperadmin, user.permissions, "invoices.edit")}
+        canDelete={can(user.isSuperadmin, user.permissions, "invoices.edit")}
       />
     </>
   );
