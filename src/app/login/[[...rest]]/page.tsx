@@ -17,9 +17,8 @@ export default function LoginPage() {
         routing="path"
         path="/login"
         signUpUrl="/login"
-        // Force destination after both sign-in AND sign-up so we never land on a 404
-        forceRedirectUrl="/dashboard"
-        fallbackRedirectUrl="/dashboard"
+        forceRedirectUrl="/api/after-auth"
+        fallbackRedirectUrl="/api/after-auth"
       />
     </div>
   );

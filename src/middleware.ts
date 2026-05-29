@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 // Public (unauthenticated) routes: the login flow + webhook endpoints.
 const isPublicRoute = createRouteMatcher([
   "/login(.*)",
+  "/api/after-auth",
   "/api/webhooks(.*)",
 ]);
 
