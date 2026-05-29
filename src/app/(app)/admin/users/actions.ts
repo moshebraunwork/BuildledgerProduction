@@ -22,8 +22,10 @@ export async function setUserRole(userId: string, roleId: string) {
 export async function setUserActive(userId: string, active: boolean) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "admin.users")) return { error: "Forbidden" };
-  const check = await sql`select is_superadmin from public.users where id = ${userId} and company_id = ${user.companyId} limit 1`;
-  if (check.length && check[0].is_superadmin) return { error: "Cannot change a superadmin" };
+  const check = await sql`select is_superadmin, role_id from public.users where id = ${userId} and company_id = ${user.companyId} limit 1`;
+  if (!check.length) return { error: "User not found" };
+  if (check[0].is_superadmin) return { error: "Cannot change a superadmin" };
+  if (active && !check[0].role_id) return { error: "Assign a role before enabling this user" };
   await sql`update public.users set is_active = ${active} where id = ${userId} and company_id = ${user.companyId}`;
   await audit({
     companyId: user.companyId, actorId: user.id, actorEmail: user.email,

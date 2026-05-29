@@ -228,7 +228,20 @@ export function UsersManager({ initialUsers, roles }: { initialUsers: UserRow[];
                     )}
                   </TableCell>
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    {u.is_superadmin ? <Badge variant="secondary">Always on</Badge> : <Switch checked={u.is_active} onCheckedChange={(v) => changeActive(u.id, v)} />}
+                    {u.is_superadmin ? (
+                      <Badge variant="secondary">Always on</Badge>
+                    ) : (
+                      <div className="flex flex-col items-end gap-1">
+                        <Switch
+                          checked={u.is_active}
+                          disabled={!u.is_active && !u.role_id}
+                          onCheckedChange={(v) => changeActive(u.id, v)}
+                        />
+                        {!u.is_active && !u.role_id && (
+                          <span className="text-[11px] text-muted-foreground">Role required</span>
+                        )}
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -281,9 +294,18 @@ export function UsersManager({ initialUsers, roles }: { initialUsers: UserRow[];
                         </Select>
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <Button size="sm" onClick={() => changeActive(u.id, true)}>
-                          <UserCheck className="h-3.5 w-3.5 mr-1" /> Enable
-                        </Button>
+                        <div className="flex flex-col items-end gap-1">
+                          <Button
+                            size="sm"
+                            disabled={!u.role_id}
+                            onClick={() => changeActive(u.id, true)}
+                          >
+                            <UserCheck className="h-3.5 w-3.5 mr-1" /> Enable
+                          </Button>
+                          {!u.role_id && (
+                            <span className="text-[11px] text-muted-foreground">Assign a role first</span>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -422,10 +444,18 @@ export function UsersManager({ initialUsers, roles }: { initialUsers: UserRow[];
                     <div>
                       <div className="text-sm font-medium">Account active</div>
                       <div className="text-xs text-muted-foreground">
-                        {detailUser.is_active ? "User can log in." : "User cannot log in until enabled."}
+                        {detailUser.is_active
+                          ? "User can log in."
+                          : !detailUser.role_id
+                          ? "Assign a role before enabling."
+                          : "User cannot log in until enabled."}
                       </div>
                     </div>
-                    <Switch checked={detailUser.is_active} onCheckedChange={(v) => changeActive(detailUser.id, v)} />
+                    <Switch
+                      checked={detailUser.is_active}
+                      disabled={!detailUser.is_active && !detailUser.role_id}
+                      onCheckedChange={(v) => changeActive(detailUser.id, v)}
+                    />
                   </div>
                 )}
               </div>
