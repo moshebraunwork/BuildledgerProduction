@@ -55,19 +55,23 @@ export async function deleteEmployee(id: string) {
 // ---- system invitations (Clerk) ----
 import { clerkClient } from "@clerk/nextjs/server";
 
-// Invite an employee to log into the system. Creates a Clerk invitation that
-// emails them a sign-up link, and records the pending status on the employee.
+// Invite an employee to log into the system. Creates a Clerk invitation,
+// pre-provisions a user row immediately (so they appear in Users page right away),
+// and records the pending status on the employee.
 export async function inviteEmployee(employeeId: string, email: string) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "employees.edit")) return { error: "Forbidden" };
   if (!email) return { error: "Email required" };
+
+  // Get the employee's name for the pre-provisioned user row
+  const empRows = await sql`select name from public.employees where id = ${employeeId} and company_id = ${user.companyId} limit 1`;
+  const empName = empRows[0]?.name ?? null;
 
   try {
     const client = await clerkClient();
     const invitation = await client.invitations.createInvitation({
       emailAddress: email,
       ignoreExisting: true,
-      // Where the invite link sends them — the app's login (Clerk handles sign-up).
       redirectUrl: process.env.NEXT_PUBLIC_APP_URL
         ? `${process.env.NEXT_PUBLIC_APP_URL}/login`
         : undefined,
@@ -78,6 +82,19 @@ export async function inviteEmployee(employeeId: string, email: string) {
       set invite_email = ${email}, invite_status = 'pending', clerk_invitation_id = ${invitation.id}
       where id = ${employeeId} and company_id = ${user.companyId}
     `;
+
+    // Pre-provision a user row so the admin can see and manage them immediately.
+    // clerk_user_id is null until they actually sign up — ensureProfile will claim it.
+    const alreadyExists = await sql`
+      select id from public.users where lower(email) = lower(${email}) and company_id = ${user.companyId} limit 1
+    `;
+    if (!alreadyExists.length) {
+      await sql`
+        insert into public.users (company_id, email, full_name, is_active, is_superadmin)
+        values (${user.companyId}, ${email}, ${empName}, false, false)
+      `;
+    }
+
     await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "employee.invite", entity: "employee", entityId: employeeId, detail: { email } });
     return { ok: true, status: "pending" as const };
   } catch (e: any) {

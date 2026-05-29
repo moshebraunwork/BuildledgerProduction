@@ -19,16 +19,17 @@ export interface CurrentUser {
 }
 
 // Ensures a profile row exists in Neon for the signed-in Clerk user.
+// If a pre-provisioned row exists for that email (created when an invite was sent),
+// it claims it by writing in the clerk_user_id. Otherwise a new inactive row is created.
 // The support admin email becomes superadmin (full access, always active).
-// Everyone else is created inactive, pending admin approval.
 async function ensureProfile(clerkUserId: string, email: string, fullName: string | null) {
   const supportEmail = (process.env.SUPPORT_ADMIN_EMAIL ?? "").toLowerCase();
   const isSupport = email.toLowerCase() === supportEmail;
 
+  // Check if there's already a row linked to this Clerk user ID
   const existing = await sql`
     select id, is_superadmin from public.users where clerk_user_id = ${clerkUserId} limit 1
   `;
-
   if (existing.length) {
     if (isSupport && !existing[0].is_superadmin) {
       await sql`
@@ -40,6 +41,25 @@ async function ensureProfile(clerkUserId: string, email: string, fullName: strin
     return;
   }
 
+  // Check for a pre-provisioned row by email (created when admin sent an invite)
+  const preProvisioned = await sql`
+    select id from public.users
+    where lower(email) = lower(${email}) and clerk_user_id is null
+    limit 1
+  `;
+  if (preProvisioned.length) {
+    // Claim this row — link the Clerk user ID and update name
+    await sql`
+      update public.users
+      set clerk_user_id = ${clerkUserId},
+          full_name = coalesce(full_name, ${fullName}),
+          email = ${email}
+      where id = ${preProvisioned[0].id}
+    `;
+    return;
+  }
+
+  // Brand-new user — create inactive row pending admin approval
   await sql`
     insert into public.users (clerk_user_id, company_id, email, full_name, role_id, is_superadmin, is_active)
     values (

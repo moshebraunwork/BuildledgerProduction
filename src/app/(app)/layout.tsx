@@ -11,22 +11,53 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user.isActive && !user.isSuperadmin) {
     const companyRows = await sql`select contact_email, name from public.companies where id = ${user.companyId} limit 1`;
     const company = companyRows[0] as any;
+    const firstName = user.fullName?.split(" ")[0] ?? null;
     return (
-      <div className="flex min-h-screen items-center justify-center p-6 text-center">
-        <div className="max-w-sm space-y-3">
-          <h1 className="text-lg font-semibold">Account pending approval</h1>
-          <p className="text-sm text-muted-foreground">
-            Your account isn&apos;t active yet. An administrator needs to assign you a role and
-            enable access before you can use BuildLedger.
+      <div className="flex min-h-screen flex-col items-center justify-center bg-muted/30 p-6">
+        <div className="w-full max-w-md">
+          {/* Logo / brand */}
+          <div className="mb-8 text-center">
+            {company?.name && (
+              <p className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+                {company.name}
+              </p>
+            )}
+          </div>
+
+          {/* Card */}
+          <div className="rounded-2xl border bg-background p-8 shadow-sm text-center space-y-4">
+            {/* Hourglass icon */}
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary text-2xl">
+              ⏳
+            </div>
+
+            <div className="space-y-2">
+              <h1 className="text-xl font-semibold">
+                {firstName ? `Hey ${firstName}, you're almost in!` : "You're almost in!"}
+              </h1>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Your account is set up and waiting — an admin just needs to enable it before you can get started.
+                This usually only takes a moment.
+              </p>
+            </div>
+
+            {company?.contact_email && (
+              <div className="rounded-lg bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
+                Need it sooner? Reach out to{" "}
+                <a
+                  href={`mailto:${company.contact_email}`}
+                  className="font-medium text-foreground underline underline-offset-2 hover:text-primary"
+                >
+                  {company.contact_email}
+                </a>
+              </div>
+            )}
+          </div>
+
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            Signed in as {user.email} &nbsp;·&nbsp;{" "}
+            <a href="/sign-out" className="underline underline-offset-2 hover:text-foreground">Sign out</a>
           </p>
-          {company?.contact_email && (
-            <p className="text-sm text-muted-foreground">
-              To request access, contact{" "}
-              <a href={`mailto:${company.contact_email}`} className="font-medium text-foreground underline underline-offset-2">
-                {company.contact_email}
-              </a>
-            </p>
-          )}
         </div>
       </div>
     );
