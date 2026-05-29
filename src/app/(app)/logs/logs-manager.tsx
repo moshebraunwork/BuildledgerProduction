@@ -119,9 +119,8 @@ export function LogsManager({ initialLogs }: { initialLogs: LogEntry[] }) {
       return matchQ && matchAction;
     });
     list.sort((a, b) => {
-      let av: string = (a as any)[sortKey] ?? "";
-      let bv: string = (b as any)[sortKey] ?? "";
-      av = av.toLowerCase(); bv = bv.toLowerCase();
+      const av = String((a as any)[sortKey] ?? "").toLowerCase();
+      const bv = String((b as any)[sortKey] ?? "").toLowerCase();
       if (av < bv) return sortDir === "asc" ? -1 : 1;
       if (av > bv) return sortDir === "asc" ? 1 : -1;
       return 0;
