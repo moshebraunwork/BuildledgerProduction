@@ -8,44 +8,16 @@ import { useClerk } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { can, type PermissionMap } from "@/lib/permissions";
 import { saveTheme } from "@/app/(app)/actions";
+import { NAV } from "@/components/nav-items";
 import {
-  LayoutDashboard, Hammer, Boxes, Users, Settings as SettingsIcon,
-  ScrollText, Shield, HardHat, ChevronLeft, ChevronRight, FileText,
-  ChevronDown, ChevronUp, Monitor, Moon, Sun, LogOut, User as UserIcon, UserCog,
+  HardHat, ChevronLeft, ChevronRight,
+  ChevronDown, ChevronUp, Monitor, Moon, Sun, LogOut, User as UserIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  perm: string;       // empty = always visible
-  children?: NavItem[];
-}
-
-// Primary navigation. Admin is an expandable group (admin-only).
-// Settings is split: app settings live under Admin; the user's own settings
-// live in the profile menu at the bottom.
-const NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, perm: "dashboard.view" },
-  {
-    href: "/admin", label: "Admin", icon: Shield, perm: "admin.view",
-    children: [
-      { href: "/admin/users",     label: "Users",         icon: UserCog,    perm: "admin.users" },
-      { href: "/admin/roles",     label: "Roles",         icon: Shield,     perm: "admin.roles" },
-      { href: "/admin/settings",  label: "App settings",  icon: SettingsIcon, perm: "admin.company" },
-      { href: "/logs",            label: "Activity log",  icon: ScrollText, perm: "logs.view" },
-    ],
-  },
-  { href: "/jobs",       label: "Jobs",       icon: Hammer, perm: "jobs.view" },
-  { href: "/invoices",   label: "Invoices",   icon: FileText, perm: "invoices.view" },
-  { href: "/inventory",  label: "Inventory",  icon: Boxes,  perm: "inventory.view" },
-  { href: "/employees",  label: "Employees",  icon: Users,  perm: "employees.view" },
-];
 
 const COLLAPSED_KEY = "buildledger.sidebar.collapsed";
 
@@ -175,7 +147,7 @@ export function Sidebar({
                           href={c.href}
                           className={cn(
                             "flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors",
-                            cActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                            cActive ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground"
                           )}
                         >
                           <CIcon className="h-3.5 w-3.5 shrink-0" />
@@ -195,11 +167,12 @@ export function Sidebar({
               href={item.href}
               title={collapsed ? item.label : undefined}
               className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                active ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                "relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 collapsed && "justify-center px-2"
               )}
             >
+              {active && !collapsed && <span className="absolute inset-y-1.5 left-0 w-1 rounded-r-full bg-primary" />}
               <Icon className="h-4 w-4 shrink-0" />
               {!collapsed && <span className="truncate">{item.label}</span>}
             </Link>

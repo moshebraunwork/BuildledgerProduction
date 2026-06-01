@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { Sidebar } from "@/components/sidebar";
+import { MobileNav } from "@/components/mobile-nav";
 import { ApplyTheme } from "@/components/apply-theme";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -72,7 +73,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         email={user.email}
         fullName={user.fullName}
       />
-      <main className="flex-1 overflow-y-auto p-6">{children}</main>
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <MobileNav isSuperadmin={user.isSuperadmin} permissions={user.permissions} />
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+      </div>
     </div>
   );
 }
