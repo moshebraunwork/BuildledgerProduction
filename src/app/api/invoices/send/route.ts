@@ -6,6 +6,18 @@ import { can } from "@/lib/permissions";
 import { audit } from "@/lib/audit";
 import { fmtMoney, fmtDate } from "@/lib/utils";
 
+// Escape user/DB-supplied strings before interpolating into the email HTML,
+// otherwise a crafted job/customer/invoice field becomes stored XSS in the
+// email delivered to the customer.
+function esc(v: unknown): string {
+  return String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 interface IncludeOptions {
   logo?: boolean;
   jobDetails?: boolean;
@@ -62,16 +74,18 @@ export async function POST(req: Request) {
     );
   }
 
-  const companyDisplay = inv.invoice_from || inv.company_name || "";
+  const companyDisplay = esc(inv.invoice_from || inv.company_name || "");
   const lines = (inv.line_items as Array<{ name: string; qty?: number; amount: number }>) ?? [];
 
   const primary = "#1e40af";
   const lightBg = "#f8fafc";
   const border = "#e2e8f0";
 
+  // Only embed the logo if it's a real http(s) URL (no javascript:/data: tricks).
+  const logoSrc = typeof inv.logo_url === "string" && /^https?:\/\//i.test(inv.logo_url) ? inv.logo_url : "";
   const logoHtml =
-    opts.logo && inv.logo_url
-      ? `<img src="${inv.logo_url}" alt="logo" style="max-height:48px;max-width:180px;object-fit:contain" />`
+    opts.logo && logoSrc
+      ? `<img src="${esc(logoSrc)}" alt="logo" style="max-height:48px;max-width:180px;object-fit:contain" />`
       : opts.logo
       ? `<span style="font-size:18px;font-weight:700;color:#ffffff">${companyDisplay}</span>`
       : "";
@@ -80,7 +94,7 @@ export async function POST(req: Request) {
     .map(
       (l, i) => `
       <tr style="background:${i % 2 === 0 ? "#ffffff" : "#f8fafc"}">
-        <td style="padding:10px 16px;border-bottom:1px solid ${border}">${l.name}${l.qty ? ` &times; ${l.qty}` : ""}</td>
+        <td style="padding:10px 16px;border-bottom:1px solid ${border}">${esc(l.name)}${l.qty ? ` &times; ${esc(l.qty)}` : ""}</td>
         ${opts.prices ? `<td style="padding:10px 16px;border-bottom:1px solid ${border};text-align:right;white-space:nowrap">${fmtMoney(l.amount)}</td>` : ""}
       </tr>`
     )
@@ -114,8 +128,8 @@ export async function POST(req: Request) {
       ? `
     <div style="background:${lightBg};border:1px solid ${border};border-radius:8px;padding:16px;margin:20px 0">
       <p style="margin:0 0 8px;font-weight:600;font-size:13px;color:#374151">Job Details</p>
-      ${inv.job_title ? `<p style="margin:2px 0;font-size:13px;color:#64748b">Job: ${inv.job_title}</p>` : ""}
-      ${inv.job_place ? `<p style="margin:2px 0;font-size:13px;color:#64748b">Location: ${inv.job_place}</p>` : ""}
+      ${inv.job_title ? `<p style="margin:2px 0;font-size:13px;color:#64748b">Job: ${esc(inv.job_title)}</p>` : ""}
+      ${inv.job_place ? `<p style="margin:2px 0;font-size:13px;color:#64748b">Location: ${esc(inv.job_place)}</p>` : ""}
       ${inv.job_date ? `<p style="margin:2px 0;font-size:13px;color:#64748b">Date: ${fmtDate(String(inv.job_date))}</p>` : ""}
     </div>`
       : "";
@@ -125,7 +139,7 @@ export async function POST(req: Request) {
       ? `
     <div style="margin-top:20px;padding:16px;background:${lightBg};border-left:4px solid ${primary};border-radius:4px">
       <p style="margin:0 0 4px;font-weight:600;font-size:13px;color:#374151">Notes</p>
-      <p style="margin:0;font-size:13px;color:#64748b;white-space:pre-line">${inv.notes}</p>
+      <p style="margin:0;font-size:13px;color:#64748b;white-space:pre-line">${esc(inv.notes)}</p>
     </div>`
       : "";
 
@@ -141,7 +155,7 @@ export async function POST(req: Request) {
       <div>${logoHtml || `<span style="font-size:18px;font-weight:700;color:#ffffff">${companyDisplay}</span>`}</div>
       <div style="text-align:right">
         <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:2px">INVOICE</div>
-        <div style="font-size:13px;color:#bfdbfe;margin-top:2px">${inv.number}</div>
+        <div style="font-size:13px;color:#bfdbfe;margin-top:2px">${esc(inv.number)}</div>
       </div>
     </div>
 
@@ -149,8 +163,8 @@ export async function POST(req: Request) {
     <div style="background:${lightBg};border-bottom:1px solid ${border};padding:16px 32px;display:flex;gap:32px">
       <div>
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:3px">Billed To</div>
-        <div style="font-weight:600;font-size:14px">${inv.customer_name ?? "Customer"}</div>
-        ${inv.customer_email ? `<div style="font-size:12px;color:#64748b">${inv.customer_email}</div>` : ""}
+        <div style="font-weight:600;font-size:14px">${esc(inv.customer_name ?? "Customer")}</div>
+        ${inv.customer_email ? `<div style="font-size:12px;color:#64748b">${esc(inv.customer_email)}</div>` : ""}
       </div>
       <div>
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:3px">Issued</div>
@@ -191,7 +205,13 @@ export async function POST(req: Request) {
 
   try {
     const resend = new Resend(apiKey);
-    await resend.emails.send({ from, to: toEmail, subject: `Invoice ${inv.number}`, html });
+    // Resend returns { data, error } and does NOT throw on API-level failures
+    // (unverified domain, invalid recipient, rate limit) — check error explicitly
+    // so we never mark an invoice "sent" when delivery actually failed.
+    const { error } = await resend.emails.send({ from, to: toEmail, subject: `Invoice ${inv.number}`, html });
+    if (error) {
+      return NextResponse.json({ error: error.message ?? "Email provider rejected the message" }, { status: 502 });
+    }
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Send failed" }, { status: 502 });
   }
@@ -199,7 +219,8 @@ export async function POST(req: Request) {
   // Only mark as sent when sending to the actual customer email
   if (!overrideEmail) {
     await sql`
-      update public.invoices set status = 'sent', sent_at = now() where id = ${invoiceId}
+      update public.invoices set status = 'sent', sent_at = now()
+      where id = ${invoiceId} and company_id = ${user.companyId}
     `;
   }
 

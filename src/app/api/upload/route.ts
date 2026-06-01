@@ -15,11 +15,27 @@ export async function POST(req: Request) {
   if (!file) return NextResponse.json({ error: "No file" }, { status: 400 });
 
   // Punch photos stay image-only at 10 MB. Job files allow images, videos and
-  // documents at a larger cap.
+  // common documents at a larger cap — but never SVG/HTML and friends, which
+  // execute script when served from our origin.
   if (kind === "job-file") {
     const MAX_BYTES = 50 * 1024 * 1024;
     if (file.size > MAX_BYTES) {
       return NextResponse.json({ error: "File is too large (max 50 MB)." }, { status: 413 });
+    }
+    const type = file.type || "";
+    const isImage = type.startsWith("image/") && type !== "image/svg+xml";
+    const isVideo = type.startsWith("video/");
+    const docAllow = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/plain",
+      "text/csv",
+    ];
+    if (!isImage && !isVideo && !docAllow.includes(type)) {
+      return NextResponse.json({ error: "Unsupported file type." }, { status: 415 });
     }
   } else {
     const MAX_BYTES = 10 * 1024 * 1024;

@@ -278,17 +278,29 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
   // Load data when jobId changes
   React.useEffect(() => {
     if (!jobId) return;
+    let cancelled = false;
     setLoading(true);
-    getJobDetail(jobId).then((res) => {
-      setLoading(false);
-      if (res.error || !res.data) return;
-      const d = res.data as any;
-      setJob(d.job); setCrew(d.crew); setAllEmployees(d.allEmployees);
-      setJobItems(d.jobItems); setCatalog(d.catalog); setCosts(d.costs);
-      setPunches(d.punches); setCompany(d.company); setInvoices(d.invoices);
-      setJobNotes(d.notes);
-      setFiles(d.files ?? []);
-    });
+    getJobDetail(jobId)
+      .then((res) => {
+        if (cancelled) return;
+        setLoading(false);
+        if (res.error || !res.data) {
+          toast({ title: "Couldn't load job", description: res.error ?? "Not found", variant: "destructive" });
+          return;
+        }
+        const d = res.data as any;
+        setJob(d.job); setCrew(d.crew); setAllEmployees(d.allEmployees);
+        setJobItems(d.jobItems); setCatalog(d.catalog); setCosts(d.costs);
+        setPunches(d.punches); setCompany(d.company); setInvoices(d.invoices);
+        setJobNotes(d.notes);
+        setFiles(d.files ?? []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoading(false);
+        toast({ title: "Couldn't load job", description: "Please try again.", variant: "destructive" });
+      });
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
@@ -315,6 +327,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
       estimate: Number(editForm.estimate ?? 0),
       billing_mode: editForm.billing_mode ?? "itemized",
       billing_rate: editForm.billing_rate ?? null,
+      status: editForm.status,
     });
     setSaving(false);
     if (res.error) return toast({ title: "Save failed", description: res.error, variant: "destructive" });
@@ -395,14 +408,15 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
     setPunchSlideOpen(true);
   }
 
-  async function uploadFile(file: File, prefix: string): Promise<string | null> {
+  async function uploadFile(file: File, prefix: string): Promise<string> {
     const fd = new FormData();
     fd.append("file", file);
     fd.append("prefix", prefix);
     const res = await fetch("/api/upload", { method: "POST", body: fd });
     const json = await res.json();
-    if (!res.ok) { toast({ title: "Upload failed", description: json.error, variant: "destructive" }); return null; }
-    return json.url;
+    // Throw so the caller aborts instead of silently saving a punch without its photo.
+    if (!res.ok) throw new Error(json.error || "Photo upload failed");
+    return json.url as string;
   }
 
   async function savePunch() {
@@ -1106,7 +1120,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                       count={files.length + allMedia.length}
                       actions={perms.mediaManage ? (
                         <>
-                          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
+                          <input ref={fileInputRef} type="file" className="hidden" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" onChange={handleFileUpload} />
                           <Button size="sm" disabled={uploadingFile} onClick={() => fileInputRef.current?.click()}>
                             <Upload className="h-4 w-4 mr-1.5" />{uploadingFile ? "Uploading…" : "Add file"}
                           </Button>

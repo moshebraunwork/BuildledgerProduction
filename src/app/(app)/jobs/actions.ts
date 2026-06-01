@@ -4,12 +4,16 @@ import { sql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { audit } from "@/lib/audit";
+import { revalidatePath } from "next/cache";
 
 interface JobInput {
   title: string; place: string | null; scheduled_date: string | null;
   customer_name: string | null; customer_email: string | null;
   estimate: number; billing_mode: string; billing_rate?: number | null;
+  status?: string;
 }
+
+const JOB_STATUSES = ["scheduled", "active", "complete"];
 
 export async function createJob(input: JobInput) {
   const user = await getCurrentUser();
@@ -21,12 +25,14 @@ export async function createJob(input: JobInput) {
     returning *
   `;
   await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "job.create", entity: "job", entityId: rows[0].id });
+  revalidatePath("/jobs");
   return { data: rows[0] };
 }
 
 export async function updateJob(id: string, input: JobInput) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "jobs.edit")) return { error: "Forbidden" };
+  const status = input.status && JOB_STATUSES.includes(input.status) ? input.status : null;
   const rows = await sql`
     update public.jobs set
       title = ${input.title},
@@ -37,11 +43,13 @@ export async function updateJob(id: string, input: JobInput) {
       estimate = ${input.estimate},
       billing_mode = ${input.billing_mode},
       billing_rate = ${input.billing_rate ?? null},
+      status = coalesce(${status}, status),
       updated_at = now()
     where id = ${id} and company_id = ${user.companyId}
     returning *
   `;
   await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "job.update", entity: "job", entityId: id });
+  revalidatePath("/jobs");
   return { data: rows[0] };
 }
 
@@ -50,6 +58,7 @@ export async function deleteJob(id: string) {
   if (!user || !can(user.isSuperadmin, user.permissions, "jobs.delete")) return { error: "Forbidden" };
   await sql`delete from public.jobs where id = ${id} and company_id = ${user.companyId}`;
   await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "job.delete", entity: "job", entityId: id });
+  revalidatePath("/jobs");
   return { ok: true };
 }
 
