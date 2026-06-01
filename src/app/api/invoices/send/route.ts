@@ -216,10 +216,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e?.message ?? "Send failed" }, { status: 502 });
   }
 
-  // Only mark as sent when sending to the actual customer email
+  // Only mark as sent when sending to the actual customer email — and never
+  // downgrade an already-paid invoice back to "sent".
   if (!overrideEmail) {
     await sql`
-      update public.invoices set status = 'sent', sent_at = now()
+      update public.invoices
+      set status = case when status = 'paid' then status else 'sent' end,
+          sent_at = now()
       where id = ${invoiceId} and company_id = ${user.companyId}
     `;
   }

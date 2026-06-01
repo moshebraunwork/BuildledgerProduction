@@ -29,9 +29,10 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney, fmtDate, cn } from "@/lib/utils";
+import { computeBilling } from "@/lib/billing";
 import {
   Plus, Trash2, Pencil, Download, Send, Mail, Camera, FileText, MoreVertical, X,
-  CheckCircle, AlertTriangle, Clock, Upload, Paperclip, Play,
+  CheckCircle, AlertTriangle, Clock, Upload, Paperclip, Play, DollarSign, Undo2,
 } from "lucide-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -603,57 +604,40 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
     return () => clearInterval(t);
   }, []);
 
-  function workerSeconds(workerId: string, kind?: "site" | "store") {
-    return punches.filter((p) => p.employee_id === workerId && (kind ? p.kind === kind : true))
-      .reduce((s, p) => {
-        const end = p.ended_at ? new Date(p.ended_at).getTime() : now;
-        return s + Math.max(0, end - new Date(p.started_at).getTime());
-      }, 0) / 1000;
-  }
-
   const rate = job?.billing_rate ?? company?.default_rate ?? 0;
   const taxRate = company?.tax_rate ?? 0;
+  // Live preview uses the same billing engine the server uses to generate the
+  // invoice, so the previewed total and the issued total always match.
   const billing = React.useMemo(() => {
-    if (!job) return { lines: [], subtotal: 0, tax: 0, total: 0 };
-    const lines: LineItem[] = [];
-    if (job.billing_mode === "itemized") {
-      for (const it of jobItems) {
-        if (it.excluded) continue;
-        lines.push({ name: it.name, qty: it.qty, amount: it.charge * it.qty });
-      }
-    } else {
-      for (const w of crew) {
-        const totalSec = workerSeconds(w.id);
-        const storeSec = workerSeconds(w.id, "store");
-        const billSec = excludeStoreTime ? totalSec - storeSec : totalSec;
-        const hours = billSec / 3600;
-        if (hours > 0) lines.push({ name: `Labor — ${w.name}`, amount: hours * rate });
-      }
-    }
-    for (const c of costs) {
-      if (c.excluded) continue;
-      lines.push({ name: c.label, amount: c.charge });
-    }
-    const subtotal = lines.reduce((s, l) => s + l.amount, 0);
-    const tax = subtotal * taxRate;
-    return { lines, subtotal, tax, total: subtotal + tax };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [job, jobItems, costs, crew, excludeStoreTime, rate, taxRate, now]);
+    if (!job) return { lines: [] as LineItem[], subtotal: 0, tax: 0, total: 0 };
+    const employeeName: Record<string, string> = {};
+    for (const e of allEmployees) employeeName[e.id] = e.name;
+    return computeBilling({
+      billingMode: job.billing_mode,
+      rate: Number(rate),
+      taxRate: Number(taxRate),
+      excludeStoreTime,
+      items: jobItems.map((it) => ({ name: it.name, qty: it.qty, charge: it.charge, excluded: it.excluded })),
+      costs: costs.map((c) => ({ label: c.label, charge: c.charge, excluded: c.excluded })),
+      punches: punches.map((p) => ({ employee_id: p.employee_id, kind: p.kind, started_at: p.started_at, ended_at: p.ended_at })),
+      employeeName,
+      nowMs: now,
+    });
+  }, [job, jobItems, costs, punches, allEmployees, excludeStoreTime, rate, taxRate, now]);
 
   const [generating, setGenerating] = React.useState(false);
   async function generateInvoice() {
     if (!job) return;
     setGenerating(true);
-    const res = await generateInvoiceAction({
-      jobId: job.id, customerName: job.customer_name, customerEmail: job.customer_email,
-      subtotal: billing.subtotal, tax: billing.tax, total: billing.total, lineItems: billing.lines,
-    });
+    // The server recomputes the authoritative line items/totals; we just tell it
+    // the one preference that isn't stored on the job.
+    const res = await generateInvoiceAction({ jobId: job.id, excludeStoreTime });
     setGenerating(false);
     if (res.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
     const d = res.data as any;
     setInvoices((inv) => [{
-      id: d.id, number: d.number, status: "draft", total: billing.total, created_at: d.created_at,
-      subtotal: billing.subtotal, tax: billing.tax, line_items: billing.lines,
+      id: d.id, number: d.number, status: d.status, total: Number(d.total), created_at: d.created_at,
+      subtotal: Number(d.subtotal), tax: Number(d.tax), line_items: d.line_items ?? [],
       customer_name: job.customer_name, customer_email: job.customer_email,
       notes: null, due_date: null, file_name: null,
     }, ...inv]);
@@ -723,11 +707,20 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
     toast({ title: "Invoice deleted" });
   }
 
+  async function toggleInvoicePaid(inv: FullInvoice) {
+    const mod = await import("@/app/(app)/invoices/actions");
+    const res = inv.status === "paid" ? await mod.markInvoiceUnpaid(inv.id) : await mod.markInvoicePaid(inv.id);
+    if (res && (res as any).error) return toast({ title: "Failed", description: (res as any).error, variant: "destructive" });
+    const next = inv.status === "paid" ? "sent" : "paid";
+    setInvoices((all) => all.map((i) => (i.id === inv.id ? { ...i, status: next } : i)));
+    toast({ title: next === "paid" ? "Invoice marked paid" : "Invoice marked unpaid" });
+  }
+
   const statusVariant: Record<string, "secondary" | "default" | "success"> = {
     scheduled: "secondary", active: "default", complete: "success",
   };
   const invStatusVariant: Record<string, "secondary" | "success" | "default"> = {
-    draft: "secondary", sent: "success", paid: "default",
+    draft: "secondary", sent: "default", paid: "success",
   };
 
   return (
@@ -1080,6 +1073,8 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                                   <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                                     <Button size="sm" variant="ghost" onClick={() => downloadPdf(inv, company)} title="Download PDF"><Download className="h-3.5 w-3.5" /></Button>
                                     {perms.invoicesSend && <Button size="sm" variant="ghost" onClick={() => { setSendTarget(inv); setUseOverride(false); setOverrideEmail(""); setIncludeOptions({ ...DEFAULT_INCLUDE }); setSendDialogOpen(true); }} title="Send"><Send className="h-3.5 w-3.5" /></Button>}
+                                    {perms.invoicesEdit && inv.status === "sent" && <Button size="sm" variant="ghost" onClick={() => toggleInvoicePaid(inv)} title="Mark paid"><DollarSign className="h-3.5 w-3.5 text-emerald-600" /></Button>}
+                                    {perms.invoicesEdit && inv.status === "paid" && <Button size="sm" variant="ghost" onClick={() => toggleInvoicePaid(inv)} title="Mark unpaid"><Undo2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>}
                                     {inv.status === "draft" && <Button size="sm" variant="ghost" onClick={() => deleteInvoice(inv)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>}
                                   </div>
                                 </TableCell>

@@ -23,13 +23,14 @@ export default async function DashboardPage() {
     sql`select stock, low_threshold, name from public.items where company_id = ${cid}`,
     sql`select count(*)::int as n from public.employees where company_id = ${cid}`,
     sql`select total, status, created_at from public.invoices where company_id = ${cid}`,
-    // revenue grouped by month (last 6 months), sent invoices only
+    // revenue grouped by month (last 6 months); issued invoices only (no drafts)
     sql`
       select to_char(date_trunc('month', created_at), 'Mon') as month,
              date_trunc('month', created_at) as m,
              sum(total)::float as revenue
       from public.invoices
-      where company_id = ${cid} and created_at > now() - interval '6 months'
+      where company_id = ${cid} and status in ('sent', 'paid')
+        and created_at > now() - interval '6 months'
       group by 1, 2 order by 2
     `,
     // recent activity feed
@@ -54,11 +55,13 @@ export default async function DashboardPage() {
   ]);
 
   const lowStock = (items as any[]).filter((i) => i.stock <= i.low_threshold).length;
-  const billed = (invoices as any[]).reduce((s, i) => s + Number(i.total || 0), 0);
-  const sentRevenue = (invoices as any[]).filter((i) => i.status === "sent").reduce((s, i) => s + Number(i.total || 0), 0);
+  // Collected = paid; Outstanding = issued but not yet paid (sent). Drafts are
+  // not counted as revenue.
+  const collected = (invoices as any[]).filter((i) => i.status === "paid").reduce((s, i) => s + Number(i.total || 0), 0);
+  const outstanding = (invoices as any[]).filter((i) => i.status === "sent").reduce((s, i) => s + Number(i.total || 0), 0);
 
   const stats = [
-    { label: "Revenue (invoiced)", value: fmtMoney(billed), sub: `${fmtMoney(sentRevenue)} sent`, icon: DollarSign },
+    { label: "Revenue (collected)", value: fmtMoney(collected), sub: `${fmtMoney(outstanding)} outstanding`, icon: DollarSign },
     { label: "Active jobs", value: String(activeCount[0].n), sub: `${jobsCount[0].n} total`, icon: Hammer },
     { label: "Employees", value: String(employeesCount[0].n), sub: `${openPunches[0].n} clocked in now`, icon: Users },
     { label: "Low stock", value: String(lowStock), sub: `${(items as any[]).length} items total`, icon: Boxes },

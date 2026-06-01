@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney, fmtDate } from "@/lib/utils";
 import { Download, Send, Printer, Plus, Trash2, Mail, X, Search, ArrowUpDown, ArrowUp, ArrowDown, MoreVertical, Pencil, Eye } from "lucide-react";
-import { updateInvoice, deleteInvoice } from "./actions";
+import { updateInvoice, deleteInvoice, markInvoicePaid, markInvoiceUnpaid } from "./actions";
 
 interface LineItem { name: string; qty?: number; amount: number; }
 interface Invoice {
@@ -223,10 +223,24 @@ export function InvoicesManager({
     if (canSend) {
       actions.push({ label: "Send invoice", icon: "send", onClick: () => openSendDialog(inv) });
     }
+    if (canEdit && inv.status === "sent") {
+      actions.push({ label: "Mark paid", icon: "check", onClick: () => setInvoicePaid(inv, true) });
+    }
+    if (canEdit && inv.status === "paid") {
+      actions.push({ label: "Mark unpaid", icon: "check", onClick: () => setInvoicePaid(inv, false) });
+    }
     if (canDelete && inv.status === "draft") {
       actions.push({ label: "Delete", icon: "delete", onClick: () => setToDelete(inv), destructive: true });
     }
     setCtx({ x: e.clientX, y: e.clientY, actions });
+  }
+
+  async function setInvoicePaid(inv: Invoice, paid: boolean) {
+    const res = paid ? await markInvoicePaid(inv.id) : await markInvoiceUnpaid(inv.id);
+    if (res?.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
+    const next = paid ? "paid" : "sent";
+    setInvoices((all) => all.map((i) => (i.id === inv.id ? { ...i, status: next } : i)));
+    toast({ title: paid ? "Invoice marked paid" : "Invoice marked unpaid" });
   }
 
   async function downloadPdf(inv: Invoice) {
@@ -412,6 +426,7 @@ ${inv.notes ? `<div class="notes"><div class="sect">Notes</div><p>${inv.notes}</
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="draft">Draft</SelectItem>
             <SelectItem value="sent">Sent</SelectItem>
+            <SelectItem value="paid">Paid</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -457,7 +472,7 @@ ${inv.notes ? `<div class="notes"><div class="sect">Notes</div><p>${inv.notes}</
                     <TableCell className="text-sm">{inv.due_date ? fmtDate(inv.due_date) : "—"}</TableCell>
                     <TableCell>{fmtMoney(inv.total)}</TableCell>
                     <TableCell>
-                      <Badge variant={inv.status === "sent" ? "success" : "secondary"} className="capitalize">
+                      <Badge variant={inv.status === "paid" ? "success" : inv.status === "sent" ? "default" : "secondary"} className="capitalize">
                         {inv.status}
                       </Badge>
                     </TableCell>

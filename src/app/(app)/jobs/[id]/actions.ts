@@ -4,6 +4,7 @@ import { sql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { audit } from "@/lib/audit";
+import { computeBilling } from "@/lib/billing";
 import { revalidatePath } from "next/cache";
 
 // Authn + permission check. Returns the user, or null if not allowed.
@@ -157,23 +158,69 @@ export async function setJobCostExcluded(id: string, excluded: boolean) {
 }
 
 // ---- invoice generation ----
-export async function generateInvoice(params: {
-  jobId: string; customerName: string | null; customerEmail: string | null;
-  subtotal: number; tax: number; total: number; lineItems: any[];
-}) {
+// Authoritative billing: the server recomputes line items and totals from the
+// job's own items/costs/punches and the company's rate/tax. Client-supplied
+// amounts are never trusted. `excludeStoreTime` is the only billing preference
+// taken from the client (it isn't persisted on the job).
+export async function generateInvoice(params: { jobId: string; excludeStoreTime?: boolean }) {
   const user = await requireUser("invoices.create");
   if (!user) return { error: "Forbidden" };
-  if (!(await jobInCompany(params.jobId, user.companyId))) return { error: "Not found" };
-  const number = `INV-${Date.now().toString().slice(-6)}`;
+
+  const jobRows = await sql`
+    select id, customer_name, customer_email, billing_mode, billing_rate
+    from public.jobs where id = ${params.jobId} and company_id = ${user.companyId} limit 1
+  `;
+  if (!jobRows.length) return { error: "Not found" };
+  const job = jobRows[0];
+
+  const [items, costs, punches, companyRows, empRows] = await Promise.all([
+    sql`select name, qty, charge, excluded from public.job_items where job_id = ${params.jobId}`,
+    sql`select label, charge, excluded from public.job_costs where job_id = ${params.jobId}`,
+    sql`select employee_id, kind, started_at, ended_at from public.punches where job_id = ${params.jobId}`,
+    sql`select default_rate, tax_rate from public.companies where id = ${user.companyId} limit 1`,
+    // Names for everyone who could appear on a labor line (crew + anyone punched).
+    sql`select id, name from public.employees where company_id = ${user.companyId}`,
+  ]);
+
+  const employeeName: Record<string, string> = {};
+  for (const e of empRows as any[]) employeeName[e.id] = e.name;
+
+  const company = (companyRows as any[])[0] ?? null;
+  const rate = Number(job.billing_rate ?? company?.default_rate ?? 0);
+  const taxRate = Number(company?.tax_rate ?? 0);
+
+  const { lines, subtotal, tax, total } = computeBilling({
+    billingMode: job.billing_mode,
+    rate,
+    taxRate,
+    excludeStoreTime: params.excludeStoreTime ?? true,
+    items: (items as any[]).map((i) => ({ name: i.name, qty: Number(i.qty), charge: Number(i.charge), excluded: i.excluded })),
+    costs: (costs as any[]).map((c) => ({ label: c.label, charge: Number(c.charge), excluded: c.excluded })),
+    punches: punches as any[],
+    employeeName,
+    nowMs: Date.now(),
+  });
+
+  if (lines.length === 0) return { error: "Nothing to bill yet." };
+
+  // Atomic, collision-free per-company invoice number.
+  const seqRows = await sql`
+    update public.companies set invoice_seq = invoice_seq + 1
+    where id = ${user.companyId}
+    returning invoice_seq
+  `;
+  const seq = Number(seqRows[0]?.invoice_seq ?? Date.now());
+  const number = `INV-${String(seq).padStart(6, "0")}`;
+
   const rows = await sql`
     insert into public.invoices
       (company_id, job_id, number, customer_name, customer_email, subtotal, tax, total, line_items, status)
     values
-      (${user.companyId}, ${params.jobId}, ${number}, ${params.customerName}, ${params.customerEmail},
-       ${params.subtotal}, ${params.tax}, ${params.total}, ${JSON.stringify(params.lineItems)}, 'draft')
-    returning id, number, status, total, created_at
+      (${user.companyId}, ${params.jobId}, ${number}, ${job.customer_name}, ${job.customer_email},
+       ${subtotal}, ${tax}, ${total}, ${JSON.stringify(lines)}, 'draft')
+    returning id, number, status, subtotal, tax, total, line_items, created_at
   `;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "invoice.create", entity: "invoice", entityId: rows[0].id });
+  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "invoice.create", entity: "invoice", entityId: rows[0].id, detail: { number, total } });
   revalidatePath("/invoices");
   return { data: rows[0] };
 }
