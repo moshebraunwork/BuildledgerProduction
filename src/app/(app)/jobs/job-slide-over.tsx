@@ -691,7 +691,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                 )}
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {editing ? (
                   <>
                     <div className="space-y-2"><Label>Title</Label><Input value={editForm.title ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} /></div>
@@ -856,35 +856,6 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
               </div>
             )}
 
-            {/* ========== MEDIA ========== */}
-            {perms.mediaView && (
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Media</h3>
-                {allMedia.length === 0 && (
-                  <div className="flex h-40 flex-col items-center justify-center rounded-lg border-2 border-dashed text-sm text-muted-foreground gap-2">
-                    <Image className="h-8 w-8" />
-                    <p>No photos attached to any punch logs.</p>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                  {allMedia.map((m, i) => (
-                    <div
-                      key={i}
-                      className="group relative aspect-square cursor-pointer overflow-hidden rounded-md border bg-muted"
-                      onClick={() => { setLightboxUrl(m.url); setLightboxMeta({ employee: m.employee, phase: m.phase, ts: m.ts }); }}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={m.url} alt="" className="h-full w-full object-cover transition-transform group-hover:scale-105" />
-                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 p-2 text-[10px] text-white">
-                        <div className="truncate font-medium">{m.employee}</div>
-                        <div className="capitalize opacity-80">{m.phase} photo · {new Date(m.ts).toLocaleDateString()}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* ========== ITEMS & COSTS ========== */}
             {perms.jobEdit && (
               <div className="space-y-4">
@@ -1040,23 +1011,54 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
               </div>
             )}
 
-            {/* ========== NOTES ========== */}
-            {perms.notesView && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Notes</h3>
-                {jobNotes?.updated_at && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    Last edited {new Date(jobNotes.updated_at).toLocaleString()}
-                  </p>
+            {/* ========== NOTES & MEDIA ========== */}
+            {(perms.notesView || perms.mediaView) && (
+              <div className="space-y-6">
+                {perms.notesView && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Notes</h3>
+                    {jobNotes?.updated_at && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Last edited {new Date(jobNotes.updated_at).toLocaleString()}
+                      </p>
+                    )}
+                    <NotesEditor
+                      jobId={job.id}
+                      initialHtml={jobNotes?.body_html ?? ""}
+                      canEdit={perms.notesEdit}
+                      updatedAt={jobNotes?.updated_at ?? null}
+                      updatedBy={jobNotes?.updated_by ?? null}
+                    />
+                  </div>
                 )}
-                <NotesEditor
-                  jobId={job.id}
-                  initialHtml={jobNotes?.body_html ?? ""}
-                  canEdit={perms.notesEdit}
-                  updatedAt={jobNotes?.updated_at ?? null}
-                  updatedBy={jobNotes?.updated_by ?? null}
-                />
+                {perms.mediaView && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Media</h3>
+                    {allMedia.length === 0 && (
+                      <div className="flex h-32 flex-col items-center justify-center rounded-lg border-2 border-dashed text-sm text-muted-foreground gap-2">
+                        <Image className="h-8 w-8" />
+                        <p>No photos attached to any punch logs.</p>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {allMedia.map((m, i) => (
+                        <div
+                          key={i}
+                          className="group relative aspect-square cursor-pointer overflow-hidden rounded-md border bg-muted"
+                          onClick={() => { setLightboxUrl(m.url); setLightboxMeta({ employee: m.employee, phase: m.phase, ts: m.ts }); }}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={m.url} alt="" className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 p-2 text-[10px] text-white">
+                            <div className="truncate font-medium">{m.employee}</div>
+                            <div className="capitalize opacity-80">{m.phase} photo · {new Date(m.ts).toLocaleDateString()}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </ResizablePanels>
