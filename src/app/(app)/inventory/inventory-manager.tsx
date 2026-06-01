@@ -11,8 +11,9 @@ import { SlideOver } from "@/components/slide-over";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney } from "@/lib/utils";
-import { Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Package } from "lucide-react";
+import { Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Package, MoreVertical } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { MobileCard, MobileField } from "@/components/mobile-card";
 import { createItem, updateItem, deleteItem } from "./actions";
 
 interface Item {
@@ -130,7 +131,7 @@ export function InventoryManager({
         {canEdit && <Button onClick={startNew}><Plus className="h-4 w-4" /> Add item</Button>}
       </div>
 
-      <Card>
+      <Card className="hidden md:block">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -189,6 +190,48 @@ export function InventoryManager({
           </Table>
         </CardContent>
       </Card>
+
+      {/* Mobile: card list */}
+      <div className="space-y-2 md:hidden">
+        {filtered.map((i) => {
+          const low = i.stock > 0 && i.stock <= i.low_threshold;
+          return (
+            <MobileCard key={i.id} onClick={() => startEdit(i)}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="truncate font-medium">{i.name}</div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-sm">{i.stock}</span>
+                  {i.stock === 0 ? <Badge variant="destructive">Out</Badge> : low ? <Badge variant="warning">Low</Badge> : null}
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-x-4 gap-y-1 text-xs">
+                <MobileField label="Cost">{fmtMoney(i.cost)}</MobileField>
+                <MobileField label="Charge">{fmtMoney(i.charge)}</MobileField>
+                <MobileField label="Markup">{markup(i)}</MobileField>
+              </div>
+              {i.source && <div className="mt-1 truncate text-xs text-muted-foreground">Source: {i.source}</div>}
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  className="rounded p-1.5 hover:bg-accent"
+                  onClick={(e) => { e.stopPropagation(); rowMenu(e, i); }}
+                  aria-label="More options"
+                >
+                  <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </div>
+            </MobileCard>
+          );
+        })}
+        {filtered.length === 0 && (
+          <EmptyState
+            icon={Package}
+            title={q ? "No matching items" : "No items yet"}
+            description={q ? "Try a different search term." : "Add catalog items to track stock and pull them into jobs."}
+            action={canEdit && !q ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add item</Button> : undefined}
+          />
+        )}
+      </div>
 
       <RowContextMenu state={ctx} onClose={() => setCtx(null)} />
       <DeleteConfirm

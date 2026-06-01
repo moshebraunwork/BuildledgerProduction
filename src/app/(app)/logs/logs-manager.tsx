@@ -7,7 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronRight, ScrollText } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
+import { MobileCard } from "@/components/mobile-card";
 
 interface LogEntry {
   id: string;
@@ -149,7 +151,7 @@ export function LogsManager({ initialLogs }: { initialLogs: LogEntry[] }) {
         <span className="text-xs text-muted-foreground ml-2">{filtered.length} entries</span>
       </div>
 
-      <Card>
+      <Card className="hidden md:block">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
@@ -205,6 +207,29 @@ export function LogsManager({ initialLogs }: { initialLogs: LogEntry[] }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Mobile: card list */}
+      <div className="space-y-2 md:hidden">
+        {filtered.map((l) => (
+          <MobileCard key={l.id}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-sm font-medium">{humanizeAction(l.action)}</div>
+                <Badge variant="secondary" className="mt-0.5 font-mono text-[10px]">{l.action}</Badge>
+              </div>
+              <span className="shrink-0 text-[11px] text-muted-foreground">{new Date(l.created_at).toLocaleString()}</span>
+            </div>
+            <div className="mt-2 text-xs text-muted-foreground">
+              {l.actor_email ?? "system"}
+              {l.entity && <> · <span className="capitalize">{l.entity}</span></>}
+            </div>
+            {l.detail && <ExpandableDetail detail={l.detail} />}
+          </MobileCard>
+        ))}
+        {filtered.length === 0 && (
+          <EmptyState icon={ScrollText} title="No activity yet" description="Actions across the app will appear here." />
+        )}
+      </div>
     </>
   );
 }

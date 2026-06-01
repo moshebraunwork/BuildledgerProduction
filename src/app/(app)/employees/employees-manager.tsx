@@ -12,8 +12,9 @@ import { SlideOver } from "@/components/slide-over";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney } from "@/lib/utils";
-import { Plus, Camera, Mail, Send, CheckCircle2, Search, ArrowUpDown, ArrowUp, ArrowDown, Users } from "lucide-react";
+import { Plus, Camera, Mail, Send, CheckCircle2, Search, ArrowUpDown, ArrowUp, ArrowDown, Users, MoreVertical } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { MobileCard, MobileField } from "@/components/mobile-card";
 import { createEmployee, updateEmployee, deleteEmployee, inviteEmployee, resendInvite } from "./actions";
 
 interface Employee {
@@ -160,7 +161,7 @@ export function EmployeesManager({
         {canEdit && <Button onClick={startNew}><Plus className="h-4 w-4" /> Add employee</Button>}
       </div>
 
-      <Card>
+      <Card className="hidden md:block">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -207,6 +208,46 @@ export function EmployeesManager({
           </Table>
         </CardContent>
       </Card>
+
+      {/* Mobile: card list */}
+      <div className="space-y-2 md:hidden">
+        {filtered.map((w) => (
+          <MobileCard key={w.id} onClick={() => startEdit(w)}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate font-medium">{w.name}</div>
+                <div className="truncate text-xs text-muted-foreground">{w.role_title ?? "Crew"}</div>
+              </div>
+              <div className="shrink-0">{inviteBadge(w)}</div>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <MobileField label="Pay">{fmtMoney(w.pay_rate)}/hr</MobileField>
+              <MobileField label="Phone">{w.phone ?? "—"}</MobileField>
+            </div>
+            {w.require_punch_photo && (
+              <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><Camera className="h-3 w-3" /> Punch photo required</div>
+            )}
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                className="rounded p-1.5 hover:bg-accent"
+                onClick={(e) => { e.stopPropagation(); rowMenu(e, w); }}
+                aria-label="More options"
+              >
+                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
+          </MobileCard>
+        ))}
+        {filtered.length === 0 && (
+          <EmptyState
+            icon={Users}
+            title={q ? "No matching employees" : "No employees yet"}
+            description={q ? "Try a different search term." : "Add your crew to assign them to jobs and track their hours."}
+            action={canEdit && !q ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add employee</Button> : undefined}
+          />
+        )}
+      </div>
 
       <RowContextMenu state={ctx} onClose={() => setCtx(null)} />
       <DeleteConfirm

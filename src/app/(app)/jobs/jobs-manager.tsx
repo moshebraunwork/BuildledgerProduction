@@ -15,6 +15,7 @@ import { SlideOver } from "@/components/slide-over";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
 import { EmptyState } from "@/components/empty-state";
+import { MobileCard, MobileField } from "@/components/mobile-card";
 import { fmtMoney, fmtDate } from "@/lib/utils";
 import { Plus, Search, MoreVertical, CheckCircle, Hammer } from "lucide-react";
 
@@ -121,7 +122,7 @@ export function JobsManager({
         {canEdit && <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New job</Button>}
       </div>
 
-      <Card>
+      <Card className="hidden md:block">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
@@ -183,6 +184,49 @@ export function JobsManager({
           </div>
         </CardContent>
       </Card>
+
+      {/* Mobile: card list */}
+      <div className="space-y-2 md:hidden">
+        {filtered.map((j) => (
+          <MobileCard key={j.id} onClick={() => openJob(j)}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate font-medium">{j.title}</div>
+                {j.place && <div className="truncate text-xs text-muted-foreground">{j.place}</div>}
+              </div>
+              <Badge variant={statusVariant[j.status] ?? "secondary"} className="shrink-0 capitalize">{j.status}</Badge>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <MobileField label="Customer">{j.customer_name ?? "—"}</MobileField>
+              <MobileField label="Scheduled">{fmtDate(j.scheduled_date)}</MobileField>
+              <MobileField label="Estimate">{fmtMoney(j.estimate)}</MobileField>
+              <MobileField label="Billing"><span className="capitalize">{j.billing_mode}</span></MobileField>
+            </div>
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                className="rounded p-1.5 hover:bg-accent"
+                onClick={(e) => { e.stopPropagation(); rowMenu(e, j); }}
+                aria-label="More options"
+              >
+                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
+          </MobileCard>
+        ))}
+        {filtered.length === 0 && (
+          <EmptyState
+            icon={Hammer}
+            title={q || statusFilter !== "all" ? "No matching jobs" : "No jobs yet"}
+            description={q || statusFilter !== "all"
+              ? "Try adjusting your search or status filter."
+              : "Create your first job to start tracking time, items and invoices."}
+            action={canEdit && !q && statusFilter === "all"
+              ? <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New job</Button>
+              : undefined}
+          />
+        )}
+      </div>
 
       <RowContextMenu state={ctx} onClose={() => setCtx(null)} />
       <DeleteConfirm
