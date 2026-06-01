@@ -21,20 +21,6 @@ export default async function JobsPage() {
         initialJobs={jobs as any[]}
         canEdit={c("jobs.edit")}
         canDelete={c("jobs.delete")}
-        perms={{
-          jobEdit: c("jobs.edit"),
-          jobDelete: c("jobs.delete"),
-          punchesView: c("punches.view"),
-          punchesManage: c("punches.manage"),
-          mediaView: c("media.view"),
-          mediaManage: c("media.manage"),
-          invoicesView: c("invoices.view"),
-          invoicesCreate: c("invoices.create"),
-          invoicesEdit: c("invoices.edit"),
-          invoicesSend: c("invoices.send"),
-          notesView: c("notes.view"),
-          notesEdit: c("notes.edit"),
-        }}
       />
     </>
   );

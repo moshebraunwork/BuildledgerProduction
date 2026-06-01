@@ -11,13 +11,15 @@ import {
   generateInvoice as generateInvoiceAction, saveJobNotes,
 } from "./[id]/actions";
 import { SlideOver } from "@/components/slide-over";
+import { ResizablePanels } from "@/components/resizable-panels";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import NextLink from "next/link";
+import { useRouter } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -71,12 +73,7 @@ export interface JobSlideOverPerms {
 
 interface JobSlideOverProps {
   jobId: string | null;
-  open: boolean;
-  onClose: () => void;
-  initialTab?: string;
   perms: JobSlideOverPerms;
-  onJobUpdated?: (job: { id: string; title: string; place: string | null; scheduled_date: string | null; customer_name: string | null; status: string; estimate: number; billing_mode: string }) => void;
-  onJobDeleted?: (jobId: string) => void;
 }
 
 // ---- Helper: duration formatting ----
@@ -231,10 +228,10 @@ async function downloadPdf(inv: FullInvoice, company: Company | null) {
 // ============================================================================
 // Main Component
 // ============================================================================
-export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", perms, onJobUpdated, onJobDeleted }: JobSlideOverProps) {
+export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
   const { toast } = useToast();
+  const router = useRouter();
   const [loading, setLoading] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState(initialTab);
 
   // ---- loaded data ----
   const [job, setJob] = React.useState<Job | null>(null);
@@ -250,9 +247,8 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
 
   // Load data when jobId changes
   React.useEffect(() => {
-    if (!open || !jobId) return;
+    if (!jobId) return;
     setLoading(true);
-    setActiveTab(initialTab);
     getJobDetail(jobId).then((res) => {
       setLoading(false);
       if (res.error || !res.data) return;
@@ -263,7 +259,7 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
       setJobNotes(d.notes);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId, open]);
+  }, [jobId]);
 
   // ---- Overview edit state ----
   const [editing, setEditing] = React.useState(false);
@@ -294,7 +290,7 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
     const updated = res.data as Job;
     setJob(updated);
     setEditing(false);
-    onJobUpdated?.(updated);
+    router.refresh();
     toast({ title: "Job saved" });
   }
 
@@ -302,7 +298,7 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
     if (!job) return;
     await setJobStatus(job.id, "complete");
     setJob((j) => j ? { ...j, status: "complete" } : j);
-    onJobUpdated?.({ ...job, status: "complete" });
+    router.refresh();
     toast({ title: "Job marked complete" });
   }
 
@@ -310,9 +306,8 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
     if (!job) return;
     const res = await deleteJob(job.id);
     if (res.error) return toast({ title: "Delete failed", description: res.error, variant: "destructive" });
-    onJobDeleted?.(job.id);
-    onClose();
     toast({ title: "Job deleted" });
+    router.push("/jobs");
   }
 
   // ---- Crew management ----
@@ -648,46 +643,32 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
     draft: "secondary", sent: "success", paid: "default",
   };
 
-  if (!open) return null;
-
-  // Build visible tabs based on permissions
-  const tabs = [
-    { value: "overview", label: "Overview", show: true },
-    { value: "clocking", label: "Clocking", show: perms.punchesView },
-    { value: "media", label: "Media", show: perms.mediaView },
-    { value: "invoices", label: "Invoices", show: perms.invoicesView },
-    { value: "items", label: "Items & Costs", show: perms.jobEdit },
-    { value: "notes", label: "Notes", show: perms.notesView },
-  ].filter((t) => t.show);
-
   return (
     <>
-      <SlideOver
-        open={open}
-        onClose={onClose}
-        width="xl"
-        title={
-          job ? (
-            <span className="flex items-center gap-2 min-w-0">
-              <span className="truncate">{job.title}</span>
-              <Badge variant={statusVariant[job.status] ?? "secondary"} className="capitalize shrink-0">{job.status}</Badge>
-            </span>
-          ) : "Loading…"
-        }
-        description={job ? `${job.place ?? "No location"} · ${fmtDate(job.scheduled_date)}` : undefined}
-      >
-        {loading && (
-          <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">Loading job…</div>
-        )}
+      {loading && (
+        <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">Loading job…</div>
+      )}
 
-        {!loading && job && (
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-4 flex-wrap">
-              {tabs.map((t) => <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>)}
-            </TabsList>
+      {!loading && job && (
+        <div className="space-y-6">
+          {/* ========== HEADER ========== */}
+          <div>
+            <NextLink href="/jobs" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+              ← Back to jobs
+            </NextLink>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">{job.title}</h1>
+              <Badge variant={statusVariant[job.status] ?? "secondary"} className="capitalize">{job.status}</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {job.place ?? "No location"} · {fmtDate(job.scheduled_date)}{job.customer_name ? ` · ${job.customer_name}` : ""}
+            </p>
+          </div>
 
-            {/* ========== OVERVIEW ========== */}
-            <TabsContent value="overview" className="space-y-4">
+          {/* ========== OVERVIEW ========== */}
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Overview</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2 justify-end">
                 {perms.jobEdit && !editing && (
                   <Button variant="outline" size="sm" onClick={startEdit}><Pencil className="h-4 w-4 mr-1.5" />Edit</Button>
@@ -788,11 +769,19 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
                   ))}
                 </div>
               </div>
-            </TabsContent>
+            </CardContent>
+          </Card>
 
+          {/* ========== SIDE-BY-SIDE SECTIONS ========== */}
+          <ResizablePanels
+            storageKey="job-detail-panels"
+            className="lg:h-[calc(100vh-23rem)]"
+            panelClassName="lg:h-full lg:space-y-4 lg:overflow-y-auto lg:pr-1"
+          >
             {/* ========== CLOCKING ========== */}
             {perms.punchesView && (
-              <TabsContent value="clocking" className="space-y-4">
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Clocking</h3>
                 <div className="flex justify-end">
                   {perms.punchesManage && (
                     <Button size="sm" onClick={openAddPunch}><Plus className="h-4 w-4 mr-1.5" />Add log</Button>
@@ -864,12 +853,13 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
                     </div>
                   </CardContent>
                 </Card>
-              </TabsContent>
+              </div>
             )}
 
             {/* ========== MEDIA ========== */}
             {perms.mediaView && (
-              <TabsContent value="media" className="space-y-4">
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Media</h3>
                 {allMedia.length === 0 && (
                   <div className="flex h-40 flex-col items-center justify-center rounded-lg border-2 border-dashed text-sm text-muted-foreground gap-2">
                     <Image className="h-8 w-8" />
@@ -892,12 +882,13 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
                     </div>
                   ))}
                 </div>
-              </TabsContent>
+              </div>
             )}
 
             {/* ========== ITEMS & COSTS ========== */}
             {perms.jobEdit && (
-              <TabsContent value="items" className="space-y-4">
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Items &amp; Costs</h3>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-base">Items used</CardTitle>
@@ -963,12 +954,13 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
                     </div>
                   </CardContent>
                 </Card>
-              </TabsContent>
+              </div>
             )}
 
             {/* ========== INVOICES ========== */}
             {perms.invoicesView && (
-              <TabsContent value="invoices" className="space-y-4">
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Invoices</h3>
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
                     {job.billing_mode === "hourly" && (
@@ -1045,12 +1037,13 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
                     </CardContent>
                   </Card>
                 )}
-              </TabsContent>
+              </div>
             )}
 
             {/* ========== NOTES ========== */}
             {perms.notesView && (
-              <TabsContent value="notes" className="space-y-3">
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Notes</h3>
                 {jobNotes?.updated_at && (
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <Clock className="h-3 w-3" />
@@ -1064,11 +1057,11 @@ export function JobSlideOver({ jobId, open, onClose, initialTab = "overview", pe
                   updatedAt={jobNotes?.updated_at ?? null}
                   updatedBy={jobNotes?.updated_by ?? null}
                 />
-              </TabsContent>
+              </div>
             )}
-          </Tabs>
-        )}
-      </SlideOver>
+          </ResizablePanels>
+        </div>
+      )}
 
       {/* ========== PUNCH LOG SLIDE-OVER (nested) ========== */}
       <SlideOver

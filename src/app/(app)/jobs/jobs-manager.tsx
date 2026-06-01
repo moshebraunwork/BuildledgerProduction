@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { createJob, deleteJob } from "./actions";
 import { setJobStatus } from "./[id]/actions";
-import { JobSlideOver, type JobSlideOverPerms } from "./job-slide-over";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,11 +28,12 @@ const statusVariant: Record<string, "secondary" | "default" | "success"> = {
 const blank = { title: "", place: "", scheduled_date: "", customer_name: "", customer_email: "", estimate: 0, billing_mode: "itemized" };
 
 export function JobsManager({
-  initialJobs, canEdit, canDelete, perms,
+  initialJobs, canEdit, canDelete,
 }: {
-  initialJobs: Job[]; canEdit: boolean; canDelete?: boolean; perms: JobSlideOverPerms;
+  initialJobs: Job[]; canEdit: boolean; canDelete?: boolean;
 }) {
   const { toast } = useToast();
+  const router = useRouter();
   const [jobs, setJobs] = React.useState<Job[]>(initialJobs);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [form, setForm] = React.useState(blank);
@@ -41,15 +42,8 @@ export function JobsManager({
   const [ctx, setCtx] = React.useState<ContextMenuState | null>(null);
   const [toDelete, setToDelete] = React.useState<Job | null>(null);
 
-  // Slide-over state
-  const [selectedJobId, setSelectedJobId] = React.useState<string | null>(null);
-  const [slideOpen, setSlideOpen] = React.useState(false);
-  const [slideInitialTab, setSlideInitialTab] = React.useState("overview");
-
-  function openJob(job: Job, tab = "overview") {
-    setSelectedJobId(job.id);
-    setSlideInitialTab(tab);
-    setSlideOpen(true);
+  function openJob(job: Job) {
+    router.push(`/jobs/${job.id}`);
   }
 
   const filtered = jobs.filter((j) => {
@@ -85,10 +79,10 @@ export function JobsManager({
   function rowMenu(e: React.MouseEvent, job: Job) {
     e.preventDefault();
     const actions: ContextMenuState["actions"] = [
-      { label: "View", icon: "view", onClick: () => openJob(job, "overview") },
-      { label: "Edit", icon: "edit", onClick: () => openJob(job, "overview") },
+      { label: "View", icon: "view", onClick: () => openJob(job) },
+      { label: "Edit", icon: "edit", onClick: () => openJob(job) },
     ];
-    if (job.status !== "complete" && perms.jobEdit) {
+    if (job.status !== "complete" && canEdit) {
       actions.push({
         label: "Mark as complete",
         icon: "check",
@@ -220,22 +214,6 @@ export function JobsManager({
           </div>
         </div>
       </SlideOver>
-
-      {/* Job detail slide-over */}
-      <JobSlideOver
-        jobId={selectedJobId}
-        open={slideOpen}
-        onClose={() => setSlideOpen(false)}
-        initialTab={slideInitialTab}
-        perms={perms}
-        onJobUpdated={(updated) => {
-          setJobs((jj) => jj.map((j) => j.id === updated.id ? { ...j, ...updated } : j));
-        }}
-        onJobDeleted={(id) => {
-          setJobs((jj) => jj.filter((j) => j.id !== id));
-          setSlideOpen(false);
-        }}
-      />
     </>
   );
 }

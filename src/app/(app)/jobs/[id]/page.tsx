@@ -2,50 +2,33 @@ import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/guard";
 import { sql } from "@/lib/db";
 import { can } from "@/lib/permissions";
-import { JobDetail } from "./job-detail";
+import { JobSlideOver } from "../job-slide-over";
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: jobId } = await params; // Next 15: params is async
   const user = await requirePermission("jobs.view");
 
-  const jobRows = await sql`select * from public.jobs where id = ${jobId} and company_id = ${user.companyId} limit 1`;
+  const jobRows = await sql`select id from public.jobs where id = ${jobId} and company_id = ${user.companyId} limit 1`;
   if (!jobRows.length) notFound();
-  const job = jobRows[0];
 
-  const [crewRows, allEmployees, jobItems, catalog, costs, punches, companyRows, existingInvoices] = await Promise.all([
-    sql`select w.id, w.name, w.role_title, w.pay_rate, w.require_punch_photo
-        from public.job_employees jw join public.employees w on w.id = jw.employee_id
-        where jw.job_id = ${jobId}`,
-    sql`select id, name, role_title, pay_rate, require_punch_photo from public.employees
-        where company_id = ${user.companyId} order by name`,
-    sql`select * from public.job_items where job_id = ${jobId}`,
-    sql`select * from public.items where company_id = ${user.companyId} order by name`,
-    sql`select * from public.job_costs where job_id = ${jobId}`,
-    sql`select * from public.punches where job_id = ${jobId} order by started_at desc`,
-    sql`select * from public.companies where id = ${user.companyId} limit 1`,
-    sql`select id, number, status, total, created_at, line_items, customer_name, customer_email, notes, due_date
-        from public.invoices where job_id = ${jobId} order by created_at desc`,
-  ]);
+  const c = (perm: string) => can(user.isSuperadmin, user.permissions, perm);
 
   return (
-    <JobDetail
-      job={job as any}
-      crew={crewRows as any[]}
-      allEmployees={allEmployees as any[]}
-      jobItems={jobItems as any[]}
-      catalog={catalog as any[]}
-      costs={costs as any[]}
-      punches={punches as any[]}
-      company={(companyRows as any[])[0] ?? null}
-      invoices={existingInvoices as any[]}
-      companyId={user.companyId}
+    <JobSlideOver
+      jobId={jobId}
       perms={{
-        edit: can(user.isSuperadmin, user.permissions, "jobs.edit"),
-        punches: can(user.isSuperadmin, user.permissions, "punches.manage"),
-        invoiceCreate: can(user.isSuperadmin, user.permissions, "invoices.create"),
-        invoiceEdit: can(user.isSuperadmin, user.permissions, "invoices.edit"),
-        invoiceSend: can(user.isSuperadmin, user.permissions, "invoices.send"),
-        isSuperadmin: user.isSuperadmin,
+        jobEdit: c("jobs.edit"),
+        jobDelete: c("jobs.delete"),
+        punchesView: c("punches.view"),
+        punchesManage: c("punches.manage"),
+        mediaView: c("media.view"),
+        mediaManage: c("media.manage"),
+        invoicesView: c("invoices.view"),
+        invoicesCreate: c("invoices.create"),
+        invoicesEdit: c("invoices.edit"),
+        invoicesSend: c("invoices.send"),
+        notesView: c("notes.view"),
+        notesEdit: c("notes.edit"),
       }}
     />
   );
