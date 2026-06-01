@@ -219,3 +219,24 @@ export async function saveJobNotes(jobId: string, bodyHtml: string) {
   `;
   return { ok: true };
 }
+
+// ---- job files / media ----
+export async function addJobFile(params: {
+  jobId: string; name: string; url: string; contentType: string | null; sizeBytes: number | null; kind: string;
+}) {
+  const user = await requireJobAccess("media.manage");
+  if (!user) return { error: "Forbidden" };
+  const rows = await sql`
+    insert into public.job_files (company_id, job_id, name, url, content_type, size_bytes, kind, uploaded_by)
+    values (${user.companyId}, ${params.jobId}, ${params.name}, ${params.url}, ${params.contentType}, ${params.sizeBytes}, ${params.kind}, ${user.id})
+    returning id, name, url, content_type, size_bytes, kind, created_at
+  `;
+  return { data: rows[0] };
+}
+
+export async function removeJobFile(id: string) {
+  const user = await requireJobAccess("media.manage");
+  if (!user) return { error: "Forbidden" };
+  await sql`delete from public.job_files where id = ${id} and company_id = ${user.companyId}`;
+  return { ok: true };
+}

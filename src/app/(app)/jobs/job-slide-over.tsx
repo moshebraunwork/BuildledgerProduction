@@ -9,6 +9,7 @@ import {
   addJobItem as addJobItemAction, removeJobItem as removeJobItemAction, setJobItemExcluded,
   addJobCost as addJobCostAction, removeJobCost as removeJobCostAction, setJobCostExcluded,
   generateInvoice as generateInvoiceAction, saveJobNotes,
+  addJobFile as addJobFileAction, removeJobFile as removeJobFileAction,
 } from "./[id]/actions";
 import { SlideOver } from "@/components/slide-over";
 import { ResizablePanels } from "@/components/resizable-panels";
@@ -27,10 +28,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
-import { fmtMoney, fmtDate } from "@/lib/utils";
+import { fmtMoney, fmtDate, cn } from "@/lib/utils";
 import {
-  Plus, Trash2, Pencil, Download, Send, Mail, Camera, FileText, MoreVertical, Image, X,
-  CheckCircle, AlertTriangle, Clock,
+  Plus, Trash2, Pencil, Download, Send, Mail, Camera, FileText, MoreVertical, X,
+  CheckCircle, AlertTriangle, Clock, Upload, Paperclip, Play,
 } from "lucide-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -62,6 +63,10 @@ interface FullInvoice {
   notes: string | null; due_date: string | null; file_name: string | null;
 }
 interface JobNotes { body_html: string; updated_at: string | null; updated_by: string | null; }
+interface JobFile {
+  id: string; name: string; url: string; content_type: string | null;
+  size_bytes: number | null; kind: string; created_at: string;
+}
 
 export interface JobSlideOverPerms {
   jobEdit: boolean; jobDelete: boolean;
@@ -82,6 +87,30 @@ function fmtDur(ms: number) {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+// ---- Reusable section box (matches the boxed record-detail layout) ----
+function SectionBox({
+  title, count, actions, children, contentClassName,
+}: {
+  title: string; count?: number; actions?: React.ReactNode; children: React.ReactNode; contentClassName?: string;
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b px-4 py-3">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          {title}
+          {count != null && (
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
+              {count}
+            </span>
+          )}
+        </CardTitle>
+        {actions && <div className="flex items-center gap-2">{actions}</div>}
+      </CardHeader>
+      <CardContent className={cn("p-4", contentClassName)}>{children}</CardContent>
+    </Card>
+  );
 }
 
 // ---- TipTap Notes Editor ----
@@ -244,6 +273,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
   const [company, setCompany] = React.useState<Company | null>(null);
   const [invoices, setInvoices] = React.useState<FullInvoice[]>([]);
   const [jobNotes, setJobNotes] = React.useState<JobNotes | null>(null);
+  const [files, setFiles] = React.useState<JobFile[]>([]);
 
   // Load data when jobId changes
   React.useEffect(() => {
@@ -257,6 +287,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
       setJobItems(d.jobItems); setCatalog(d.catalog); setCosts(d.costs);
       setPunches(d.punches); setCompany(d.company); setInvoices(d.invoices);
       setJobNotes(d.notes);
+      setFiles(d.files ?? []);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
@@ -450,6 +481,48 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
   // ---- Media lightbox ----
   const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null);
   const [lightboxMeta, setLightboxMeta] = React.useState<{ employee: string; phase: string; ts: string } | null>(null);
+  const [lightboxVideo, setLightboxVideo] = React.useState(false);
+
+  // ---- job files (images / videos / documents) ----
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [uploadingFile, setUploadingFile] = React.useState(false);
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f || !job) return;
+    if (f.size > 50 * 1024 * 1024) {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return toast({ title: "File too large", description: "Maximum size is 50 MB.", variant: "destructive" });
+    }
+    setUploadingFile(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("prefix", `job-files/${job.id}`);
+      fd.append("kind", "job-file");
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Upload failed");
+      const kind = f.type.startsWith("image/") ? "image" : f.type.startsWith("video/") ? "video" : "file";
+      const added = await addJobFileAction({
+        jobId: job.id, name: f.name, url: json.url, contentType: f.type || null, sizeBytes: f.size, kind,
+      });
+      if (added.error) throw new Error(added.error);
+      setFiles((arr) => [added.data as JobFile, ...arr]);
+      toast({ title: "File added", description: f.name });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err?.message, variant: "destructive" });
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function removeFile(file: JobFile) {
+    const res = await removeJobFileAction(file.id);
+    if (res.error) return toast({ title: "Delete failed", description: res.error, variant: "destructive" });
+    setFiles((arr) => arr.filter((x) => x.id !== file.id));
+  }
 
   const allMedia = React.useMemo(() => {
     const items: { url: string; employee: string; phase: "start" | "end"; ts: string; punchId: string }[] = [];
@@ -650,7 +723,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
       )}
 
       {!loading && job && (
-        <div className="space-y-6">
+        <div className="flex flex-col gap-4 lg:h-full">
           {/* ========== HEADER ========== */}
           <div>
             <NextLink href="/jobs" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
@@ -666,10 +739,10 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
           </div>
 
           {/* ========== OVERVIEW ========== */}
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-base">Overview</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap gap-2 justify-end">
+          <Card className="shrink-0 overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b px-4 py-3">
+              <CardTitle className="text-sm font-semibold">Overview</CardTitle>
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 {perms.jobEdit && !editing && (
                   <Button variant="outline" size="sm" onClick={startEdit}><Pencil className="h-4 w-4 mr-1.5" />Edit</Button>
                 )}
@@ -690,7 +763,8 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                   </>
                 )}
               </div>
-
+            </CardHeader>
+            <CardContent className="space-y-4 p-4">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {editing ? (
                   <>
@@ -773,22 +847,23 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
           </Card>
 
           {/* ========== SIDE-BY-SIDE SECTIONS ========== */}
-          <ResizablePanels
-            storageKey="job-detail-panels"
-            className="lg:h-[calc(100vh-23rem)]"
-            panelClassName="lg:h-full lg:space-y-4 lg:overflow-y-auto lg:pr-1"
-          >
-            {/* ========== CLOCKING ========== */}
-            {perms.punchesView && (
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Clocking</h3>
-                <div className="flex justify-end">
-                  {perms.punchesManage && (
-                    <Button size="sm" onClick={openAddPunch}><Plus className="h-4 w-4 mr-1.5" />Add log</Button>
-                  )}
-                </div>
-                <Card>
-                  <CardContent className="p-0">
+          <div className="lg:min-h-0 lg:flex-1">
+            <ResizablePanels
+              storageKey="job-detail-panels"
+              className="lg:h-full"
+              panelClassName="lg:h-full lg:overflow-y-auto lg:pr-1"
+            >
+              {/* ========== CLOCKING ========== */}
+              {perms.punchesView && (
+                <div className="space-y-4">
+                  <SectionBox
+                    title="Clocking"
+                    count={punches.length}
+                    contentClassName="p-0"
+                    actions={perms.punchesManage ? (
+                      <Button size="sm" onClick={openAddPunch}><Plus className="h-4 w-4 mr-1.5" />Add log</Button>
+                    ) : undefined}
+                  >
                     <div className="overflow-x-auto">
                       <Table>
                         <TableHeader>
@@ -851,21 +926,19 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                         </TableBody>
                       </Table>
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
+                  </SectionBox>
+                </div>
+              )}
 
-            {/* ========== ITEMS & COSTS ========== */}
-            {perms.jobEdit && (
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Items &amp; Costs</h3>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-base">Items used</CardTitle>
-                    {perms.jobEdit && <Button size="sm" onClick={() => setItemDialog(true)}><Plus className="h-4 w-4 mr-1" />Add item</Button>}
-                  </CardHeader>
-                  <CardContent className="p-0">
+              {/* ========== ITEMS & COSTS ========== */}
+              {perms.jobEdit && (
+                <div className="space-y-4">
+                  <SectionBox
+                    title="Items used"
+                    count={jobItems.length}
+                    contentClassName="p-0"
+                    actions={<Button size="sm" onClick={() => setItemDialog(true)}><Plus className="h-4 w-4 mr-1" />Add item</Button>}
+                  >
                     <div className="overflow-x-auto">
                       <Table>
                         <TableHeader>
@@ -891,15 +964,14 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                         </TableBody>
                       </Table>
                     </div>
-                  </CardContent>
-                </Card>
+                  </SectionBox>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-base">One-time costs</CardTitle>
-                    {perms.jobEdit && <Button size="sm" onClick={() => setCostDialog(true)}><Plus className="h-4 w-4 mr-1" />Add cost</Button>}
-                  </CardHeader>
-                  <CardContent className="p-0">
+                  <SectionBox
+                    title="One-time costs"
+                    count={costs.length}
+                    contentClassName="p-0"
+                    actions={<Button size="sm" onClick={() => setCostDialog(true)}><Plus className="h-4 w-4 mr-1" />Add cost</Button>}
+                  >
                     <div className="overflow-x-auto">
                       <Table>
                         <TableHeader>
@@ -923,62 +995,59 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                         </TableBody>
                       </Table>
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
+                  </SectionBox>
+                </div>
+              )}
 
-            {/* ========== INVOICES ========== */}
-            {perms.invoicesView && (
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Invoices</h3>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
+              {/* ========== INVOICES ========== */}
+              {perms.invoicesView && (
+                <div className="space-y-4">
+                  <SectionBox
+                    title="Invoices"
+                    count={invoices.length}
+                    actions={perms.invoicesCreate ? (
+                      <Button size="sm" onClick={generateInvoice} disabled={generating || billing.lines.length === 0}>
+                        <FileText className="h-4 w-4 mr-1.5" />{generating ? "Generating…" : "Generate"}
+                      </Button>
+                    ) : undefined}
+                  >
                     {job.billing_mode === "hourly" && (
-                      <div className="flex items-center gap-2 text-sm">
+                      <div className="mb-3 flex items-center gap-2 text-sm">
                         <Switch checked={excludeStoreTime} onCheckedChange={setExcludeStoreTime} id="exc-store" />
                         <Label htmlFor="exc-store">Exclude store-run time</Label>
                       </div>
                     )}
-                  </div>
-                  {perms.invoicesCreate && (
-                    <Button size="sm" onClick={generateInvoice} disabled={generating || billing.lines.length === 0}>
-                      <FileText className="h-4 w-4 mr-1.5" />{generating ? "Generating…" : "Generate invoice"}
-                    </Button>
-                  )}
-                </div>
 
-                {/* Billing summary */}
-                <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-sm">Current billing — {job.billing_mode === "itemized" ? "Itemized" : "Per hour"}</CardTitle></CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableBody>
-                          {billing.lines.map((l, i) => (
-                            <TableRow key={i}>
-                              <TableCell className="text-sm">{l.name}{l.qty ? ` × ${l.qty}` : ""}</TableCell>
-                              <TableCell className="text-right text-sm">{fmtMoney(l.amount)}</TableCell>
-                            </TableRow>
-                          ))}
-                          {billing.lines.length === 0 && <TableRow><TableCell colSpan={2} className="py-4 text-center text-sm text-muted-foreground">Nothing to bill yet.</TableCell></TableRow>}
-                        </TableBody>
-                      </Table>
-                    </div>
-                    <div className="ml-auto w-48 space-y-1 text-sm">
-                      <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{fmtMoney(billing.subtotal)}</span></div>
-                      <div className="flex justify-between text-muted-foreground"><span>Tax</span><span>{fmtMoney(billing.tax)}</span></div>
-                      <div className="flex justify-between font-semibold"><span>Total</span><span>{fmtMoney(billing.total)}</span></div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Invoice list */}
-                {invoices.length > 0 && (
-                  <Card>
-                    <CardHeader className="pb-2"><CardTitle className="text-sm">Generated invoices</CardTitle></CardHeader>
-                    <CardContent className="p-0">
+                    {/* Billing summary */}
+                    <div className="rounded-md border">
+                      <p className="border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+                        Current billing — {job.billing_mode === "itemized" ? "Itemized" : "Per hour"}
+                      </p>
                       <div className="overflow-x-auto">
+                        <Table>
+                          <TableBody>
+                            {billing.lines.map((l, i) => (
+                              <TableRow key={i}>
+                                <TableCell className="text-sm">{l.name}{l.qty ? ` × ${l.qty}` : ""}</TableCell>
+                                <TableCell className="text-right text-sm">{fmtMoney(l.amount)}</TableCell>
+                              </TableRow>
+                            ))}
+                            {billing.lines.length === 0 && <TableRow><TableCell colSpan={2} className="py-4 text-center text-sm text-muted-foreground">Nothing to bill yet.</TableCell></TableRow>}
+                          </TableBody>
+                        </Table>
+                      </div>
+                      <div className="space-y-1 border-t p-3 text-sm">
+                        <div className="ml-auto w-48 space-y-1">
+                          <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{fmtMoney(billing.subtotal)}</span></div>
+                          <div className="flex justify-between text-muted-foreground"><span>Tax</span><span>{fmtMoney(billing.tax)}</span></div>
+                          <div className="flex justify-between font-semibold"><span>Total</span><span>{fmtMoney(billing.total)}</span></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Invoice list */}
+                    {invoices.length > 0 && (
+                      <div className="mt-4 overflow-x-auto rounded-md border">
                         <Table>
                           <TableHeader>
                             <TableRow>
@@ -1005,63 +1074,127 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                           </TableBody>
                         </Table>
                       </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            )}
+                    )}
+                  </SectionBox>
+                </div>
+              )}
 
-            {/* ========== NOTES & MEDIA ========== */}
-            {(perms.notesView || perms.mediaView) && (
-              <div className="space-y-6">
-                {perms.notesView && (
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Notes</h3>
-                    {jobNotes?.updated_at && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        Last edited {new Date(jobNotes.updated_at).toLocaleString()}
-                      </p>
-                    )}
-                    <NotesEditor
-                      jobId={job.id}
-                      initialHtml={jobNotes?.body_html ?? ""}
-                      canEdit={perms.notesEdit}
-                      updatedAt={jobNotes?.updated_at ?? null}
-                      updatedBy={jobNotes?.updated_by ?? null}
-                    />
-                  </div>
-                )}
-                {perms.mediaView && (
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Media</h3>
-                    {allMedia.length === 0 && (
-                      <div className="flex h-32 flex-col items-center justify-center rounded-lg border-2 border-dashed text-sm text-muted-foreground gap-2">
-                        <Image className="h-8 w-8" />
-                        <p>No photos attached to any punch logs.</p>
-                      </div>
-                    )}
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {allMedia.map((m, i) => (
-                        <div
-                          key={i}
-                          className="group relative aspect-square cursor-pointer overflow-hidden rounded-md border bg-muted"
-                          onClick={() => { setLightboxUrl(m.url); setLightboxMeta({ employee: m.employee, phase: m.phase, ts: m.ts }); }}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={m.url} alt="" className="h-full w-full object-cover transition-transform group-hover:scale-105" />
-                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 p-2 text-[10px] text-white">
-                            <div className="truncate font-medium">{m.employee}</div>
-                            <div className="capitalize opacity-80">{m.phase} photo · {new Date(m.ts).toLocaleDateString()}</div>
-                          </div>
+              {/* ========== NOTES + FILES & MEDIA ========== */}
+              {(perms.notesView || perms.mediaView) && (
+                <div className="space-y-4">
+                  {perms.notesView && (
+                    <SectionBox
+                      title="Notes"
+                      actions={jobNotes?.updated_at ? (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />Edited {new Date(jobNotes.updated_at).toLocaleDateString()}
+                        </span>
+                      ) : undefined}
+                    >
+                      <NotesEditor
+                        jobId={job.id}
+                        initialHtml={jobNotes?.body_html ?? ""}
+                        canEdit={perms.notesEdit}
+                        updatedAt={jobNotes?.updated_at ?? null}
+                        updatedBy={jobNotes?.updated_by ?? null}
+                      />
+                    </SectionBox>
+                  )}
+                  {perms.mediaView && (
+                    <SectionBox
+                      title="Files & Media"
+                      count={files.length + allMedia.length}
+                      actions={perms.mediaManage ? (
+                        <>
+                          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
+                          <Button size="sm" disabled={uploadingFile} onClick={() => fileInputRef.current?.click()}>
+                            <Upload className="h-4 w-4 mr-1.5" />{uploadingFile ? "Uploading…" : "Add file"}
+                          </Button>
+                        </>
+                      ) : undefined}
+                    >
+                      {files.length === 0 && allMedia.length === 0 && (
+                        <div className="flex h-32 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed text-sm text-muted-foreground">
+                          <Paperclip className="h-8 w-8" />
+                          <p>No files yet.{perms.mediaManage ? " Use “Add file” to upload." : ""}</p>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </ResizablePanels>
+                      )}
+
+                      {files.length > 0 && (
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                          {files.map((f) => (
+                            <div key={f.id} className="group relative aspect-square overflow-hidden rounded-md border bg-muted">
+                              {f.kind === "image" ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={f.url}
+                                  alt={f.name}
+                                  className="h-full w-full cursor-pointer object-cover transition-transform group-hover:scale-105"
+                                  onClick={() => { setLightboxMeta(null); setLightboxVideo(false); setLightboxUrl(f.url); }}
+                                />
+                              ) : f.kind === "video" ? (
+                                <div
+                                  className="relative h-full w-full cursor-pointer"
+                                  onClick={() => { setLightboxMeta(null); setLightboxVideo(true); setLightboxUrl(f.url); }}
+                                >
+                                  <video src={f.url} className="h-full w-full object-cover" muted preload="metadata" />
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                                    <Play className="h-8 w-8 text-white" />
+                                  </div>
+                                </div>
+                              ) : (
+                                <a href={f.url} target="_blank" rel="noreferrer" className="flex h-full w-full flex-col items-center justify-center gap-2 p-2 text-center">
+                                  <Paperclip className="h-7 w-7 text-muted-foreground" />
+                                  <Download className="h-4 w-4 text-muted-foreground" />
+                                </a>
+                              )}
+                              <div className="pointer-events-none absolute bottom-0 left-0 right-0 truncate bg-gradient-to-t from-black/70 p-1.5 text-[10px] text-white">
+                                {f.name}
+                              </div>
+                              {perms.mediaManage && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeFile(f)}
+                                  className="absolute right-1 top-1 rounded bg-black/50 p-1 text-white opacity-0 transition-opacity hover:bg-black/70 group-hover:opacity-100"
+                                  title="Delete file"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {allMedia.length > 0 && (
+                        <>
+                          <p className="mb-2 mt-4 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            <Camera className="h-3.5 w-3.5" />Punch photos
+                          </p>
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            {allMedia.map((m, i) => (
+                              <div
+                                key={i}
+                                className="group relative aspect-square cursor-pointer overflow-hidden rounded-md border bg-muted"
+                                onClick={() => { setLightboxVideo(false); setLightboxUrl(m.url); setLightboxMeta({ employee: m.employee, phase: m.phase, ts: m.ts }); }}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={m.url} alt="" className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 p-2 text-[10px] text-white">
+                                  <div className="truncate font-medium">{m.employee}</div>
+                                  <div className="capitalize opacity-80">{m.phase} photo · {new Date(m.ts).toLocaleDateString()}</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </SectionBox>
+                  )}
+                </div>
+              )}
+            </ResizablePanels>
+          </div>
         </div>
       )}
 
@@ -1382,13 +1515,17 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
 
       {/* ========== MEDIA LIGHTBOX ========== */}
       {lightboxUrl && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80" onClick={() => setLightboxUrl(null)}>
-          <button className="absolute top-4 right-4 text-white/80 hover:text-white" onClick={() => setLightboxUrl(null)}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80" onClick={() => { setLightboxUrl(null); setLightboxVideo(false); }}>
+          <button className="absolute top-4 right-4 text-white/80 hover:text-white" onClick={() => { setLightboxUrl(null); setLightboxVideo(false); }}>
             <X className="h-6 w-6" />
           </button>
           <div className="flex flex-col items-center gap-4 p-4 max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={lightboxUrl} alt="" className="max-h-[70vh] w-auto rounded-lg shadow-2xl object-contain" />
+            {lightboxVideo ? (
+              <video src={lightboxUrl} controls autoPlay className="max-h-[70vh] w-auto rounded-lg shadow-2xl" />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={lightboxUrl} alt="" className="max-h-[70vh] w-auto rounded-lg shadow-2xl object-contain" />
+            )}
             {lightboxMeta && (
               <div className="text-white text-sm text-center">
                 <p className="font-medium">{lightboxMeta.employee}</p>

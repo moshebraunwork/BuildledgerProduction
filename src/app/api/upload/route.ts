@@ -11,15 +11,24 @@ export async function POST(req: Request) {
   const form = await req.formData();
   const file = form.get("file") as File | null;
   const prefix = (form.get("prefix") as string) || "uploads";
+  const kind = (form.get("kind") as string) || "image";
   if (!file) return NextResponse.json({ error: "No file" }, { status: 400 });
 
-  // Validate: punch photos must be images, capped at 10 MB.
-  const MAX_BYTES = 10 * 1024 * 1024;
-  if (!file.type.startsWith("image/")) {
-    return NextResponse.json({ error: "Only image files are allowed." }, { status: 415 });
-  }
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: "Image is too large (max 10 MB)." }, { status: 413 });
+  // Punch photos stay image-only at 10 MB. Job files allow images, videos and
+  // documents at a larger cap.
+  if (kind === "job-file") {
+    const MAX_BYTES = 50 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      return NextResponse.json({ error: "File is too large (max 50 MB)." }, { status: 413 });
+    }
+  } else {
+    const MAX_BYTES = 10 * 1024 * 1024;
+    if (!file.type.startsWith("image/")) {
+      return NextResponse.json({ error: "Only image files are allowed." }, { status: 415 });
+    }
+    if (file.size > MAX_BYTES) {
+      return NextResponse.json({ error: "Image is too large (max 10 MB)." }, { status: 413 });
+    }
   }
 
   const bytes = Buffer.from(await file.arrayBuffer());

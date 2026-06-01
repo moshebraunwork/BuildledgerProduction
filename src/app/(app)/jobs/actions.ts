@@ -57,7 +57,7 @@ export async function getJobDetail(jobId: string) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "jobs.view")) return { error: "Forbidden" };
 
-  const [jobRows, crewRows, allEmployees, jobItems, catalog, costs, punches, companyRows, invoices, notesRows] =
+  const [jobRows, crewRows, allEmployees, jobItems, catalog, costs, punches, companyRows, invoices, notesRows, filesRows] =
     await Promise.all([
       sql`select * from public.jobs where id = ${jobId} and company_id = ${user.companyId} limit 1`,
       sql`select w.id, w.name, w.role_title, w.pay_rate, w.require_punch_photo
@@ -74,6 +74,9 @@ export async function getJobDetail(jobId: string) {
               customer_name, customer_email, notes, due_date, file_name
           from public.invoices where job_id = ${jobId} order by created_at desc`,
       sql`select body_html, updated_at, updated_by from public.job_notes where job_id = ${jobId} limit 1`,
+      // Resilient if the job_files table hasn't been migrated yet.
+      sql`select id, name, url, content_type, size_bytes, kind, created_at
+          from public.job_files where job_id = ${jobId} order by created_at desc`.catch(() => [] as any[]),
     ]);
 
   if (!jobRows.length) return { error: "Not found" };
@@ -90,6 +93,7 @@ export async function getJobDetail(jobId: string) {
       company: companyRows[0] ?? null,
       invoices,
       notes: notesRows[0] ?? null,
+      files: filesRows,
     },
   };
 }
