@@ -15,8 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ResizablePanels } from "@/components/resizable-panels";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SlideOver } from "@/components/slide-over";
@@ -49,6 +49,16 @@ interface FullInvoice {
   subtotal: number; tax: number; line_items: LineItem[];
   customer_name: string | null; customer_email: string | null;
   notes: string | null; due_date: string | null;
+}
+
+// labelled value used in the Overview grid
+function Field({ label, value, children }: { label: string; value?: string | null; children?: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="text-sm font-medium">{children ?? (value || <span className="text-muted-foreground">—</span>)}</div>
+    </div>
+  );
 }
 
 export function JobDetail(props: {
@@ -581,15 +591,41 @@ table.items td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.
         )}
       </div>
 
-      <Tabs defaultValue="time">
-        <TabsList>
-          <TabsTrigger value="time">Time & Crew</TabsTrigger>
-          <TabsTrigger value="items">Items & Costs</TabsTrigger>
-          <TabsTrigger value="billing">Billing & Invoice</TabsTrigger>
-        </TabsList>
+      {/* ===================== OVERVIEW ===================== */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base">Overview</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 lg:grid-cols-6">
+            <Field label="Status">
+              <Badge variant={statusVariant[job.status] ?? "secondary"} className="capitalize">{job.status}</Badge>
+            </Field>
+            <Field label="Customer" value={job.customer_name} />
+            <Field label="Email" value={job.customer_email} />
+            <Field label="Location" value={job.place} />
+            <Field label="Scheduled" value={job.scheduled_date ? fmtDate(job.scheduled_date) : null} />
+            <Field label="Billing">{job.billing_mode === "itemized" ? "Itemized" : "Per hour"}</Field>
+            {job.billing_mode === "hourly" && <Field label="Rate" value={`${fmtMoney(rate)}/hr`} />}
+            <Field label="Estimate" value={job.estimate ? fmtMoney(job.estimate) : null} />
+          </div>
+          {job.notes && (
+            <div className="mt-5 border-t pt-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Notes</p>
+              <p className="mt-1 whitespace-pre-line text-sm">{job.notes}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
+      {/* ===================== SIDE-BY-SIDE SECTIONS ===================== */}
+      <ResizablePanels
+        storageKey="job-detail-panels"
+        className="lg:h-[calc(100vh-19rem)]"
+        panelClassName="lg:h-full lg:overflow-y-auto lg:pr-1"
+      >
         {/* ===================== TIME & CREW ===================== */}
-        <TabsContent value="time" className="space-y-4">
+        <div className="space-y-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">Crew & live time</CardTitle>
@@ -689,10 +725,10 @@ table.items td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.
               </Table>
             </CardContent>
           </Card>
-        </TabsContent>
+        </div>
 
         {/* ===================== ITEMS & COSTS ===================== */}
-        <TabsContent value="items" className="space-y-4">
+        <div className="space-y-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">Items used</CardTitle>
@@ -760,10 +796,10 @@ table.items td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.
               </Table>
             </CardContent>
           </Card>
-        </TabsContent>
+        </div>
 
         {/* ===================== BILLING & INVOICE ===================== */}
-        <TabsContent value="billing" className="space-y-4">
+        <div className="space-y-4">
           {/* Current billing summary */}
           <Card>
             <CardHeader>
@@ -857,8 +893,8 @@ table.items td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.
               </CardContent>
             </Card>
           )}
-        </TabsContent>
-      </Tabs>
+        </div>
+      </ResizablePanels>
 
       {/* ══════════ INVOICE VIEW / EDIT SLIDE-OVER ══════════ */}
       {(() => {
