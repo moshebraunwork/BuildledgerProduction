@@ -337,7 +337,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
     setJob(updated);
     setEditing(false);
     router.refresh();
-    toast({ title: "Job saved" });
+    toast({ title: "Job saved", variant: "success" });
   }
 
   async function handleMarkComplete() {
@@ -345,7 +345,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
     await setJobStatus(job.id, "complete");
     setJob((j) => j ? { ...j, status: "complete" } : j);
     router.refresh();
-    toast({ title: "Job marked complete" });
+    toast({ title: "Job marked complete", variant: "success" });
   }
 
   async function handleDelete() {
@@ -642,7 +642,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
       customer_name: job.customer_name, customer_email: job.customer_email,
       notes: null, due_date: null, file_name: null,
     }, ...inv]);
-    toast({ title: "Invoice generated", description: d.number });
+    toast({ title: "Invoice generated", description: d.number, variant: "success" });
   }
 
   // Invoice view/edit
@@ -714,7 +714,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
     if (res && (res as any).error) return toast({ title: "Failed", description: (res as any).error, variant: "destructive" });
     const next = inv.status === "paid" ? "sent" : "paid";
     setInvoices((all) => all.map((i) => (i.id === inv.id ? { ...i, status: next } : i)));
-    toast({ title: next === "paid" ? "Invoice marked paid" : "Invoice marked unpaid" });
+    toast({ title: next === "paid" ? "Invoice marked paid" : "Invoice marked unpaid", variant: "success" });
   }
 
   const statusVariant: Record<string, "secondary" | "default" | "success"> = {

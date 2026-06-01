@@ -241,7 +241,7 @@ export function InvoicesManager({
     if (res?.error) return toast({ title: "Failed", description: res.error, variant: "destructive" });
     const next = paid ? "paid" : "sent";
     setInvoices((all) => all.map((i) => (i.id === inv.id ? { ...i, status: next } : i)));
-    toast({ title: paid ? "Invoice marked paid" : "Invoice marked unpaid" });
+    toast({ title: paid ? "Invoice marked paid" : "Invoice marked unpaid", variant: "success" });
   }
 
   async function downloadPdf(inv: Invoice) {
