@@ -14,8 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SlideOver } from "@/components/slide-over";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
+import { EmptyState } from "@/components/empty-state";
 import { fmtMoney, fmtDate } from "@/lib/utils";
-import { Plus, Search, MoreVertical, CheckCircle } from "lucide-react";
+import { Plus, Search, MoreVertical, CheckCircle, Hammer } from "lucide-react";
 
 interface Job {
   id: string; title: string; place: string | null; scheduled_date: string | null;
@@ -162,7 +163,20 @@ export function JobsManager({
                   </TableRow>
                 ))}
                 {filtered.length === 0 && (
-                  <TableRow><TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">No jobs found.</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={7} className="p-0">
+                      <EmptyState
+                        icon={Hammer}
+                        title={q || statusFilter !== "all" ? "No matching jobs" : "No jobs yet"}
+                        description={q || statusFilter !== "all"
+                          ? "Try adjusting your search or status filter."
+                          : "Create your first job to start tracking time, items and invoices."}
+                        action={canEdit && !q && statusFilter === "all"
+                          ? <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New job</Button>
+                          : undefined}
+                      />
+                    </TableCell>
+                  </TableRow>
                 )}
               </TableBody>
             </Table>

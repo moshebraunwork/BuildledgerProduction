@@ -11,7 +11,8 @@ import { SlideOver } from "@/components/slide-over";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney } from "@/lib/utils";
-import { Plus, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Package } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { createItem, updateItem, deleteItem } from "./actions";
 
 interface Item {
@@ -173,7 +174,16 @@ export function InventoryManager({
                 );
               })}
               {filtered.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">No items found.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={6} className="p-0">
+                    <EmptyState
+                      icon={Package}
+                      title={q ? "No matching items" : "No items yet"}
+                      description={q ? "Try a different search term." : "Add catalog items to track stock and pull them into jobs."}
+                      action={canEdit && !q ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add item</Button> : undefined}
+                    />
+                  </TableCell>
+                </TableRow>
               )}
             </TableBody>
           </Table>

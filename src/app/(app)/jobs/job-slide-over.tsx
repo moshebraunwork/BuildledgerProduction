@@ -13,6 +13,7 @@ import {
 } from "./[id]/actions";
 import { SlideOver } from "@/components/slide-over";
 import { ResizablePanels } from "@/components/resizable-panels";
+import { JobDetailSkeleton } from "@/components/skeletons";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -725,9 +726,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
 
   return (
     <>
-      {loading && (
-        <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">Loading job…</div>
-      )}
+      {loading && <JobDetailSkeleton />}
 
       {!loading && job && (
         <div className="flex flex-col gap-4 lg:h-full">

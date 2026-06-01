@@ -15,7 +15,8 @@ import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/componen
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney, fmtDate } from "@/lib/utils";
-import { Download, Send, Printer, Plus, Trash2, Mail, X, Search, ArrowUpDown, ArrowUp, ArrowDown, MoreVertical, Pencil, Eye } from "lucide-react";
+import { Download, Send, Printer, Plus, Trash2, Mail, X, Search, ArrowUpDown, ArrowUp, ArrowDown, MoreVertical, Pencil, Eye, FileText } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { updateInvoice, deleteInvoice, markInvoicePaid, markInvoiceUnpaid } from "./actions";
 
 interface LineItem { name: string; qty?: number; amount: number; }
@@ -490,8 +491,14 @@ ${inv.notes ? `<div class="notes"><div class="sect">Notes</div><p>${inv.notes}</
                 ))}
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
-                      No invoices yet. Generate one from a job&apos;s billing tab.
+                    <TableCell colSpan={7} className="p-0">
+                      <EmptyState
+                        icon={FileText}
+                        title={q || statusFilter !== "all" ? "No matching invoices" : "No invoices yet"}
+                        description={q || statusFilter !== "all"
+                          ? "Try adjusting your search or status filter."
+                          : "Open a job and generate an invoice from its Invoices section."}
+                      />
                     </TableCell>
                   </TableRow>
                 )}

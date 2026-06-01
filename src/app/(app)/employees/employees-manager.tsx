@@ -12,7 +12,8 @@ import { SlideOver } from "@/components/slide-over";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney } from "@/lib/utils";
-import { Plus, Camera, Mail, Send, CheckCircle2, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Camera, Mail, Send, CheckCircle2, Search, ArrowUpDown, ArrowUp, ArrowDown, Users } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { createEmployee, updateEmployee, deleteEmployee, inviteEmployee, resendInvite } from "./actions";
 
 interface Employee {
@@ -190,7 +191,18 @@ export function EmployeesManager({
                   <TableCell>{inviteBadge(w)}</TableCell>
                 </TableRow>
               ))}
-              {filtered.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">No employees found.</TableCell></TableRow>}
+              {filtered.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="p-0">
+                    <EmptyState
+                      icon={Users}
+                      title={q ? "No matching employees" : "No employees yet"}
+                      description={q ? "Try a different search term." : "Add your crew to assign them to jobs and track their hours."}
+                      action={canEdit && !q ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add employee</Button> : undefined}
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>

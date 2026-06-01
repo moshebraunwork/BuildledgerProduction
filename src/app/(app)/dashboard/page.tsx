@@ -3,7 +3,7 @@ import { sql } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fmtMoney, fmtDate } from "@/lib/utils";
+import { fmtMoney, fmtDate, cn } from "@/lib/utils";
 import { Hammer, Boxes, Users, DollarSign, TrendingUp, AlertTriangle } from "lucide-react";
 import { DashboardCharts } from "./dashboard-charts";
 
@@ -61,10 +61,10 @@ export default async function DashboardPage() {
   const outstanding = (invoices as any[]).filter((i) => i.status === "sent").reduce((s, i) => s + Number(i.total || 0), 0);
 
   const stats = [
-    { label: "Revenue (collected)", value: fmtMoney(collected), sub: `${fmtMoney(outstanding)} outstanding`, icon: DollarSign },
-    { label: "Active jobs", value: String(activeCount[0].n), sub: `${jobsCount[0].n} total`, icon: Hammer },
-    { label: "Employees", value: String(employeesCount[0].n), sub: `${openPunches[0].n} clocked in now`, icon: Users },
-    { label: "Low stock", value: String(lowStock), sub: `${(items as any[]).length} items total`, icon: Boxes },
+    { label: "Revenue (collected)", value: fmtMoney(collected), sub: `${fmtMoney(outstanding)} outstanding`, icon: DollarSign, tint: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
+    { label: "Active jobs", value: String(activeCount[0].n), sub: `${jobsCount[0].n} total`, icon: Hammer, tint: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
+    { label: "Employees", value: String(employeesCount[0].n), sub: `${openPunches[0].n} clocked in now`, icon: Users, tint: "bg-violet-500/10 text-violet-600 dark:text-violet-400" },
+    { label: "Low stock", value: String(lowStock), sub: `${(items as any[]).length} items total`, icon: Boxes, tint: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
   ];
 
   const jobStatusData = [
@@ -84,14 +84,16 @@ export default async function DashboardPage() {
         {stats.map((s) => {
           const Icon = s.icon;
           return (
-            <Card key={s.label}>
+            <Card key={s.label} className="transition-shadow hover:shadow-md">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
-                <Icon className="h-4 w-4 text-muted-foreground" />
+                <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg", s.tint)}>
+                  <Icon className="h-4 w-4" />
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{s.value}</div>
-                <p className="text-xs text-muted-foreground">{s.sub}</p>
+                <div className="text-2xl font-bold tracking-tight">{s.value}</div>
+                <p className="mt-0.5 text-xs text-muted-foreground">{s.sub}</p>
               </CardContent>
             </Card>
           );
