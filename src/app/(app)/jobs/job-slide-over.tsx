@@ -867,9 +867,23 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                     title="Clocking"
                     count={punches.length}
                     contentClassName="p-0"
-                    actions={perms.punchesManage ? (
-                      <Button size="sm" onClick={openAddPunch}><Plus className="h-4 w-4 mr-1.5" />Add log</Button>
-                    ) : undefined}
+                    actions={
+                      <>
+                        {/* Personal self clock-in (mobile only). Opens the clock
+                            flow locked to this job — available to everyone. */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="md:hidden"
+                          onClick={() => router.push(`/clock?jobId=${job.id}`)}
+                        >
+                          <Play className="h-4 w-4 mr-1.5" />Clock in
+                        </Button>
+                        {perms.punchesManage && (
+                          <Button size="sm" onClick={openAddPunch}><Plus className="h-4 w-4 mr-1.5" />Add log</Button>
+                        )}
+                      </>
+                    }
                   >
                     <div className="overflow-x-auto">
                       <Table>

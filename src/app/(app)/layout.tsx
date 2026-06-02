@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { Sidebar } from "@/components/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ApplyTheme } from "@/components/apply-theme";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -75,8 +76,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <MobileNav isSuperadmin={user.isSuperadmin} permissions={user.permissions} />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6">{children}</main>
       </div>
+      <MobileTabBar isSuperadmin={user.isSuperadmin} permissions={user.permissions} />
     </div>
   );
 }
