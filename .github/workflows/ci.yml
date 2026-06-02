@@ -1,0 +1,36 @@
+name: CI
+
+# Safety net for every push and PR: unit tests plus a full typecheck/build.
+# Until now changes were only verified by a manual `npm run build`, which can't
+# catch logic regressions in billing math or permission checks.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        # Dummy values so Next can build without real secrets — no network calls
+        # happen at build time, these just satisfy module-load env reads.
+        env:
+          DATABASE_URL: postgres://invalid:invalid@localhost/invalid
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ci
+          CLERK_SECRET_KEY: sk_test_ci
+        run: npm run build

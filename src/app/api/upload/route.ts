@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { uploadToR2 } from "@/lib/r2";
+import { logger } from "@/lib/logger";
 
 // POST /api/upload  — multipart form with a "file" field and optional "prefix".
 // Clerk-protected. Returns { url } of the stored object in R2.
@@ -55,6 +56,9 @@ export async function POST(req: Request) {
     const url = await uploadToR2(key, bytes, file.type || "application/octet-stream");
     return NextResponse.json({ url });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Upload failed" }, { status: 502 });
+    // Log the real cause (bad R2 keys, bucket misconfig, network) server-side;
+    // show the user a generic message so provider internals don't leak.
+    logger.error("upload", "R2 upload failed", { key, kind, userId, err: e });
+    return NextResponse.json({ error: "Upload failed. Please try again." }, { status: 502 });
   }
 }

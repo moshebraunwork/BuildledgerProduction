@@ -4,6 +4,7 @@ import { sql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { audit } from "@/lib/audit";
+import { logger } from "@/lib/logger";
 
 interface EmployeeInput {
   name: string; role_title: string | null; phone: string | null;
@@ -118,7 +119,14 @@ export async function resendInvite(employeeId: string) {
     const client = await clerkClient();
     // Revoke the previous invitation if still pending (ignore errors if already gone)
     if (emp.clerk_invitation_id) {
-      try { await client.invitations.revokeInvitation(emp.clerk_invitation_id); } catch {}
+      // Best-effort: the old invite may already be accepted/revoked, in which
+      // case Clerk throws — that's fine, but record it so a real failure here
+      // (e.g. auth/network) isn't completely invisible.
+      try {
+        await client.invitations.revokeInvitation(emp.clerk_invitation_id);
+      } catch (e) {
+        logger.warn("employees", "could not revoke prior invitation", { employeeId, err: e });
+      }
     }
     const invitation = await client.invitations.createInvitation({
       emailAddress: emp.invite_email,

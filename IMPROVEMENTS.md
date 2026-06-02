@@ -1,4 +1,28 @@
-# BuildLedger — 10 Things We Can Make Better
+# BuildLedger — Improvement Backlog
+
+> **Update (2026-06):** A round of improvements landed on top of the earlier UX
+> batches. Addressed in this round:
+> - **Security headers** — `next.config.mjs` now sends HSTS, `X-Frame-Options`,
+>   `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, and drops
+>   the `X-Powered-By` banner.
+> - **Patched dependencies** — bumped Next.js to a release that clears the
+>   high-severity advisories (`npm audit fix`, no breaking change).
+> - **#3 / #2 Clerk webhook** — `POST /api/webhooks/clerk` verifies the Svix
+>   signature (built-in crypto, no new dep) and links accepted invites back to
+>   the employee/user rows in real time, replacing the polling approach.
+> - **#7 Logging** — added `src/lib/logger.ts` and wired it into the upload
+>   route, R2 failures, and the previously-silent invite-revoke catch. Users now
+>   see friendly messages while the real cause is logged server-side.
+> - **#8 Indexes** — migration `0010_performance_indexes.sql` covers the
+>   dashboard hours aggregation, billing reads, and the list pages.
+> - **#9 Tests + CI** — `vitest` suite around billing math and `can()`
+>   permissions, plus a GitHub Actions workflow running tests + build on push.
+>
+> The notes below remain the standing backlog for what's left.
+
+---
+
+# 10 Things We Can Make Better
 
 A grounded review after the Neon migration and the UX batches. These are ordered roughly by impact-to-effort: the early ones are high-value and mostly small; the later ones are bigger investments. Each notes *why* it matters and *roughly* what it takes.
 
