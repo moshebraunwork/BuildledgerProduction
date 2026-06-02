@@ -61,7 +61,7 @@ async function uploadPhoto(file: File, jobId: string): Promise<string> {
   return json.url as string;
 }
 
-export function ClockClient({ lockedJobId }: { lockedJobId: string | null }) {
+export function ClockClient({ lockedJobId, userEmail }: { lockedJobId: string | null; userEmail: string }) {
   const { toast } = useToast();
   const router = useRouter();
 
@@ -264,7 +264,8 @@ export function ClockClient({ lockedJobId }: { lockedJobId: string | null }) {
             <p className="font-medium">No employee profile linked</p>
             <p className="text-sm text-muted-foreground">
               Your account isn&apos;t linked to an employee record yet, so you can&apos;t clock in.
-              Ask an admin to link you on the Employees page.
+              On the Employees page, add or invite an employee using your login email{" "}
+              <span className="font-medium text-foreground">{userEmail}</span> — it links automatically.
             </p>
           </CardContent>
         </Card>

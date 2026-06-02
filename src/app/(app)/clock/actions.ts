@@ -16,17 +16,43 @@ import { revalidatePath } from "next/cache";
 // Resolve the employee row linked to the signed-in user (by internal user id or
 // Clerk id), scoped to their company. Returns nulls when not signed in or when
 // no employee profile is linked to the account.
+//
+// Linking: the only identifier shared between a login and an employee record is
+// the email (employees.invite_email, set when the employee was invited). The
+// user_id / clerk_user_id columns aren't populated anywhere else, so we match on
+// id/clerk id first and fall back to email — then backfill the link columns so
+// the match is fast and stable from then on.
 async function currentEmployee() {
   const user = await getCurrentUser();
   if (!user) return { user: null as null, employee: null as any };
   const rows = await sql`
-    select id, name, require_punch_photo
+    select id, name, require_punch_photo, user_id, clerk_user_id
     from public.employees
     where company_id = ${user.companyId}
-      and (user_id = ${user.id} or clerk_user_id = ${user.clerkUserId})
+      and (
+        user_id = ${user.id}
+        or clerk_user_id = ${user.clerkUserId}
+        or (invite_email is not null and lower(invite_email) = lower(${user.email}))
+      )
+    order by case
+      when user_id = ${user.id} then 0
+      when clerk_user_id = ${user.clerkUserId} then 1
+      else 2
+    end
     limit 1
   `;
-  return { user, employee: rows[0] ?? null };
+  const employee = rows[0] ?? null;
+  // Backfill the link columns when we matched by email (or only had one set), so
+  // future lookups hit the indexed id/clerk-id path.
+  if (employee && (employee.user_id == null || employee.clerk_user_id == null)) {
+    await sql`
+      update public.employees
+      set user_id = coalesce(user_id, ${user.id}),
+          clerk_user_id = coalesce(clerk_user_id, ${user.clerkUserId})
+      where id = ${employee.id} and company_id = ${user.companyId}
+    `;
+  }
+  return { user, employee };
 }
 
 // The caller's current shift state + the jobs they can clock into.

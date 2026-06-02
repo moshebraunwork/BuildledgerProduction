@@ -21,5 +21,5 @@ export default async function ClockPage({
     if (rows.length) lockedJobId = jobId;
   }
 
-  return <ClockClient lockedJobId={lockedJobId} />;
+  return <ClockClient lockedJobId={lockedJobId} userEmail={user.email} />;
 }
