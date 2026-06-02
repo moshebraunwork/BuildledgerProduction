@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
-import { Clock, MapPin, Store, Play, Square, Loader2, Camera, Undo2, CheckCircle2 } from "lucide-react";
+import { Clock, MapPin, Store, Play, Square, Loader2, Camera, Undo2, X } from "lucide-react";
 import {
   getMyShiftStatus, selfPunchIn, selfStoreOut, selfStoreReturn, selfPunchOut,
 } from "./actions";
@@ -61,9 +61,12 @@ async function uploadPhoto(file: File, jobId: string): Promise<string> {
   return json.url as string;
 }
 
-export function ClockClient({ lockedJobId, userEmail }: { lockedJobId: string | null; userEmail: string }) {
+interface LockedJob { id: string; title: string; place: string | null; require_punch_photo: boolean; }
+
+export function ClockClient({ lockedJob, userEmail }: { lockedJob: LockedJob | null; userEmail: string }) {
   const { toast } = useToast();
   const router = useRouter();
+  const lockedJobId = lockedJob?.id ?? null;
 
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
@@ -72,7 +75,17 @@ export function ClockClient({ lockedJobId, userEmail }: { lockedJobId: string | 
   const [device, setDevice] = React.useState<{ lat: number; lng: number } | null>(null);
   const [autoMatched, setAutoMatched] = React.useState(false);
   const [photoFile, setPhotoFile] = React.useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
   const photoInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Build (and clean up) an object URL so the captured photo can be previewed
+  // before it's uploaded.
+  React.useEffect(() => {
+    if (!photoFile) { setPreviewUrl(null); return; }
+    const url = URL.createObjectURL(photoFile);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photoFile]);
 
   // Live elapsed clock.
   const [nowMs, setNowMs] = React.useState(Date.now());
@@ -129,7 +142,6 @@ export function ClockClient({ lockedJobId, userEmail }: { lockedJobId: string | 
 
   const open = status?.open ?? null;
   const jobs = status?.jobs ?? [];
-  const lockedJob = lockedJobId ? jobs.find((j) => j.id === lockedJobId) ?? null : null;
   const selectedJob = jobs.find((j) => j.id === selectedJobId) ?? null;
 
   const startPhotoRequired =
@@ -218,30 +230,44 @@ export function ClockClient({ lockedJobId, userEmail }: { lockedJobId: string | 
   }
 
   // ---- Photo control (shared by clock-in and clock-out) ----
-  const PhotoControl = ({ required }: { required: boolean }) => (
-    <div className="space-y-1.5">
-      <Label className="text-sm">
-        Photo {required ? <span className="text-destructive">(required)</span> : <span className="text-muted-foreground">(optional)</span>}
-      </Label>
-      <input
-        ref={photoInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
-      />
-      <Button type="button" variant="outline" className="w-full" onClick={() => photoInputRef.current?.click()}>
-        <Camera className="mr-2 h-4 w-4" />
-        {photoFile ? "Retake photo" : "Take photo"}
-      </Button>
-      {photoFile && (
-        <p className="flex items-center gap-1.5 text-xs text-emerald-600">
-          <CheckCircle2 className="h-3.5 w-3.5" /> {photoFile.name}
-        </p>
-      )}
-    </div>
-  );
+  // A plain render function (not a component) so the file input isn't remounted
+  // on every render — that would drop the captured file. `capture="environment"`
+  // makes mobile browsers open the rear camera directly.
+  function photoField(required: boolean) {
+    return (
+      <div className="space-y-1.5">
+        <Label className="text-sm">
+          Photo {required ? <span className="text-destructive">(required)</span> : <span className="text-muted-foreground">(optional)</span>}
+        </Label>
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
+        />
+        {previewUrl ? (
+          <div className="space-y-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={previewUrl} alt="Photo preview" className="h-48 w-full rounded-md border object-cover" />
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => photoInputRef.current?.click()}>
+                <Camera className="mr-2 h-4 w-4" /> Retake
+              </Button>
+              <Button type="button" variant="ghost" onClick={clearPhoto}>
+                <X className="mr-2 h-4 w-4" /> Remove
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button type="button" variant="outline" className="w-full" onClick={() => photoInputRef.current?.click()}>
+            <Camera className="mr-2 h-4 w-4" /> Take photo
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   // ---- Render ----
   if (loading) {
@@ -322,7 +348,7 @@ export function ClockClient({ lockedJobId, userEmail }: { lockedJobId: string | 
               )}
             </div>
 
-            <PhotoControl required={startPhotoRequired} />
+            {photoField(startPhotoRequired)}
 
             <Button className="h-12 w-full text-base" disabled={busy || (!lockedJobId && !selectedJobId)} onClick={handlePunchIn}>
               {busy ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Play className="mr-2 h-5 w-5" />}
@@ -367,7 +393,7 @@ export function ClockClient({ lockedJobId, userEmail }: { lockedJobId: string | 
 
             <Card>
               <CardContent className="space-y-3 p-4">
-                <PhotoControl required={endPhotoRequired} />
+                {photoField(endPhotoRequired)}
                 <Button variant="destructive" className="h-12 w-full text-base" disabled={busy} onClick={handlePunchOut}>
                   {busy ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Square className="mr-2 h-5 w-5" />}
                   Stop working

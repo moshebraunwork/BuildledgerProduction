@@ -15,11 +15,19 @@ export default async function ClockPage({
   if (!user) redirect("/login");
 
   const { jobId } = await searchParams;
-  let lockedJobId: string | null = null;
+  let lockedJob: { id: string; title: string; place: string | null; require_punch_photo: boolean } | null = null;
   if (jobId) {
-    const rows = await sql`select id from public.jobs where id = ${jobId} and company_id = ${user.companyId} limit 1`;
-    if (rows.length) lockedJobId = jobId;
+    const rows = await sql`
+      select id, title, place, require_punch_photo
+      from public.jobs where id = ${jobId} and company_id = ${user.companyId} limit 1
+    `;
+    if (rows.length) {
+      lockedJob = {
+        id: rows[0].id, title: rows[0].title, place: rows[0].place,
+        require_punch_photo: rows[0].require_punch_photo,
+      };
+    }
   }
 
-  return <ClockClient lockedJobId={lockedJobId} userEmail={user.email} />;
+  return <ClockClient lockedJob={lockedJob} userEmail={user.email} />;
 }
