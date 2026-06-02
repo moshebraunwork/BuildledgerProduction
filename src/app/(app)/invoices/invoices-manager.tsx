@@ -161,7 +161,8 @@ export function InvoicesManager({
     });
     setSavingEdit(false);
     if (res.error) return toast({ title: "Save failed", description: res.error, variant: "destructive" });
-    const updated = { ...viewing!, ...draft };
+    // Use the server-recomputed amounts so the list never drifts from the DB.
+    const updated = { ...viewing!, ...draft, ...((res as any).data ?? {}) };
     setInvoices((all) => all.map((i) => (i.id === updated.id ? updated : i)));
     setViewing(updated);
     setEditing(false);

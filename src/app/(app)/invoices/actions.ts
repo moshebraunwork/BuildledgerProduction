@@ -4,6 +4,7 @@ import { sql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { audit } from "@/lib/audit";
+import { round2 } from "@/lib/billing";
 import { revalidatePath } from "next/cache";
 
 interface LineItem { name: string; qty?: number; amount: number; }
@@ -26,23 +27,38 @@ export async function updateInvoice(
   if (!can(user.isSuperadmin, user.permissions, "invoices.edit")) return { error: "Forbidden" };
 
   const rows = await sql`
-    select id from public.invoices
+    select subtotal, tax, status from public.invoices
     where id = ${invoiceId} and company_id = ${user.companyId}
     limit 1
   `;
   if (!rows[0]) return { error: "Invoice not found" };
+  if (rows[0].status === "paid") return { error: "Paid invoices can't be edited." };
+
+  // Recompute money server-side from the submitted line items — never trust the
+  // client's subtotal/tax/total. Preserve the invoice's effective tax rate.
+  const items: LineItem[] = (data.line_items ?? []).map((l) => ({
+    name: String(l.name ?? ""),
+    qty: l.qty == null ? undefined : Number(l.qty),
+    amount: round2(Number(l.amount) || 0),
+  }));
+  const subtotal = round2(items.reduce((s, l) => s + l.amount, 0));
+  const prevSubtotal = Number(rows[0].subtotal) || 0;
+  const prevTax = Number(rows[0].tax) || 0;
+  const taxRate = prevSubtotal > 0 ? prevTax / prevSubtotal : 0;
+  const tax = round2(subtotal * taxRate);
+  const total = round2(subtotal + tax);
 
   await sql`
     update public.invoices set
       customer_name  = ${data.customer_name},
       customer_email = ${data.customer_email},
-      line_items     = ${JSON.stringify(data.line_items)}::jsonb,
+      line_items     = ${JSON.stringify(items)}::jsonb,
       notes          = ${data.notes},
       due_date       = ${data.due_date ?? null},
-      subtotal       = ${data.subtotal},
-      tax            = ${data.tax},
-      total          = ${data.total}
-    where id = ${invoiceId}
+      subtotal       = ${subtotal},
+      tax            = ${tax},
+      total          = ${total}
+    where id = ${invoiceId} and company_id = ${user.companyId}
   `;
 
   await audit({
@@ -54,7 +70,8 @@ export async function updateInvoice(
     entityId: invoiceId,
   });
 
-  return { ok: true };
+  revalidatePath("/invoices");
+  return { data: { subtotal, tax, total, line_items: items } };
 }
 
 // Record a payment against an invoice. Only an already-sent (or paid) invoice

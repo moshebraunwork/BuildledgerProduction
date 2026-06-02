@@ -676,7 +676,8 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
     });
     setSavingInv(false);
     if (res.error) return toast({ title: "Save failed", description: res.error, variant: "destructive" });
-    const updated = { ...viewingInv!, ...invDraft };
+    // Use the server-recomputed amounts so totals match the DB exactly.
+    const updated = { ...viewingInv!, ...invDraft, ...((res as any).data ?? {}) };
     setInvoices((all) => all.map((i) => i.id === updated.id ? updated : i));
     setViewingInv(updated); setEditingInv(false); setInvDraft(null);
     toast({ title: "Invoice updated" });
