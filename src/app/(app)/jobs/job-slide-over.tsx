@@ -33,7 +33,7 @@ import { fmtMoney, fmtDate, cn } from "@/lib/utils";
 import { computeBilling } from "@/lib/billing";
 import {
   Plus, Trash2, Pencil, Download, Send, Mail, Camera, FileText, MoreVertical, X,
-  CheckCircle, AlertTriangle, Clock, Upload, Paperclip, Play, DollarSign, Undo2,
+  CheckCircle, AlertTriangle, Clock, Upload, Paperclip, Play,
 } from "lucide-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -382,7 +382,9 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
     note: "", startedPhotoUrl: "", endedPhotoUrl: "",
   });
   const [punchBusy, setPunchBusy] = React.useState(false);
-  const [punchCtx, setPunchCtx] = React.useState<ContextMenuState | null>(null);
+  // Shared row context-menu state for every table in the slide-over
+  // (clocking, items, costs, invoices) — opened by the ⋮ button or right-click.
+  const [rowCtx, setRowCtx] = React.useState<ContextMenuState | null>(null);
   const [deletePunchTarget, setDeletePunchTarget] = React.useState<Punch | null>(null);
   const [deletePunchMode, setDeletePunchMode] = React.useState<"end" | "all">("end");
   const [deletePunchConfirmOpen, setDeletePunchConfirmOpen] = React.useState(false);
@@ -491,7 +493,37 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
       { label: "Edit", icon: "edit", onClick: () => openEditPunch(p) },
       { label: p.ended_at ? "Remove end time" : "Delete punch", icon: "delete", onClick: () => promptDeletePunch(p), destructive: true },
     ];
-    setPunchCtx({ x: e.clientX, y: e.clientY, actions });
+    setRowCtx({ x: e.clientX, y: e.clientY, actions });
+  }
+
+  // ---- Row menus for items / costs / invoices ----
+  function itemRowMenu(e: React.MouseEvent, it: JobItem) {
+    if (!perms.jobEdit) return;
+    e.preventDefault();
+    setRowCtx({ x: e.clientX, y: e.clientY, actions: [
+      { label: it.excluded ? "Include on invoice" : "Exclude from invoice", icon: "check", onClick: () => toggleItemExcluded(it) },
+      { label: "Delete", icon: "delete", onClick: () => setDeleteItemTarget(it), destructive: true },
+    ] });
+  }
+  function costRowMenu(e: React.MouseEvent, c: JobCost) {
+    if (!perms.jobEdit) return;
+    e.preventDefault();
+    setRowCtx({ x: e.clientX, y: e.clientY, actions: [
+      { label: c.excluded ? "Include on invoice" : "Exclude from invoice", icon: "check", onClick: () => toggleCostExcluded(c) },
+      { label: "Delete", icon: "delete", onClick: () => setDeleteCostTarget(c), destructive: true },
+    ] });
+  }
+  function invoiceRowMenu(e: React.MouseEvent, inv: FullInvoice) {
+    e.preventDefault();
+    const actions: ContextMenuState["actions"] = [
+      { label: "View", icon: "view", onClick: () => { setViewingInv(inv); setEditingInv(false); setInvDraft(null); } },
+      { label: "Download PDF", icon: "download", onClick: () => downloadPdf(inv, company) },
+    ];
+    if (perms.invoicesSend) actions.push({ label: "Send", icon: "send", onClick: () => { setSendTarget(inv); setUseOverride(false); setOverrideEmail(""); setIncludeOptions({ ...DEFAULT_INCLUDE }); setSendDialogOpen(true); } });
+    if (perms.invoicesEdit && inv.status === "sent") actions.push({ label: "Mark paid", icon: "check", onClick: () => toggleInvoicePaid(inv) });
+    if (perms.invoicesEdit && inv.status === "paid") actions.push({ label: "Mark unpaid", icon: "check", onClick: () => toggleInvoicePaid(inv) });
+    if (inv.status === "draft") actions.push({ label: "Delete", icon: "delete", onClick: () => deleteInvoice(inv), destructive: true });
+    setRowCtx({ x: e.clientX, y: e.clientY, actions });
   }
 
   // ---- Media lightbox ----
@@ -968,14 +1000,23 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                         </TableHeader>
                         <TableBody>
                           {jobItems.map((it) => (
-                            <TableRow key={it.id}>
+                            <TableRow key={it.id} onContextMenu={(e) => itemRowMenu(e, it)}>
                               <TableCell className="font-medium">{it.name}</TableCell>
                               <TableCell>{it.qty}</TableCell>
                               <TableCell>{fmtMoney(it.charge)}</TableCell>
                               <TableCell>{fmtMoney(it.charge * it.qty)}</TableCell>
                               <TableCell><Checkbox checked={!it.excluded} onCheckedChange={() => toggleItemExcluded(it)} /></TableCell>
                               <TableCell className="text-right">
-                                {perms.jobEdit && <Button size="sm" variant="ghost" onClick={() => setDeleteItemTarget(it)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>}
+                                {perms.jobEdit && (
+                                  <button
+                                    type="button"
+                                    className="rounded p-1 hover:bg-accent"
+                                    onClick={(e) => { e.stopPropagation(); itemRowMenu(e, it); }}
+                                    aria-label="More options"
+                                  >
+                                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                  </button>
+                                )}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -1001,12 +1042,21 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                         </TableHeader>
                         <TableBody>
                           {costs.map((c) => (
-                            <TableRow key={c.id}>
+                            <TableRow key={c.id} onContextMenu={(e) => costRowMenu(e, c)}>
                               <TableCell className="font-medium">{c.label}</TableCell>
                               <TableCell>{fmtMoney(c.charge)}</TableCell>
                               <TableCell><Checkbox checked={!c.excluded} onCheckedChange={() => toggleCostExcluded(c)} /></TableCell>
                               <TableCell className="text-right">
-                                {perms.jobEdit && <Button size="sm" variant="ghost" onClick={() => setDeleteCostTarget(c)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>}
+                                {perms.jobEdit && (
+                                  <button
+                                    type="button"
+                                    className="rounded p-1 hover:bg-accent"
+                                    onClick={(e) => { e.stopPropagation(); costRowMenu(e, c); }}
+                                    aria-label="More options"
+                                  >
+                                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                  </button>
+                                )}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -1076,19 +1126,25 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                           </TableHeader>
                           <TableBody>
                             {invoices.map((inv) => (
-                              <TableRow key={inv.id} className="cursor-pointer" onClick={() => { setViewingInv(inv); setEditingInv(false); setInvDraft(null); }}>
+                              <TableRow
+                                key={inv.id}
+                                className="cursor-pointer"
+                                onClick={() => { setViewingInv(inv); setEditingInv(false); setInvDraft(null); }}
+                                onContextMenu={(e) => invoiceRowMenu(e, inv)}
+                              >
                                 <TableCell className="font-medium">{inv.number}</TableCell>
                                 <TableCell><Badge variant={invStatusVariant[inv.status] ?? "secondary"} className="capitalize">{inv.status}</Badge></TableCell>
                                 <TableCell>{fmtMoney(inv.total)}</TableCell>
                                 <TableCell className="text-xs text-muted-foreground">{fmtDate(inv.created_at)}</TableCell>
                                 <TableCell className="text-right">
-                                  <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                                    <Button size="sm" variant="ghost" onClick={() => downloadPdf(inv, company)} title="Download PDF"><Download className="h-3.5 w-3.5" /></Button>
-                                    {perms.invoicesSend && <Button size="sm" variant="ghost" onClick={() => { setSendTarget(inv); setUseOverride(false); setOverrideEmail(""); setIncludeOptions({ ...DEFAULT_INCLUDE }); setSendDialogOpen(true); }} title="Send"><Send className="h-3.5 w-3.5" /></Button>}
-                                    {perms.invoicesEdit && inv.status === "sent" && <Button size="sm" variant="ghost" onClick={() => toggleInvoicePaid(inv)} title="Mark paid"><DollarSign className="h-3.5 w-3.5 text-emerald-600" /></Button>}
-                                    {perms.invoicesEdit && inv.status === "paid" && <Button size="sm" variant="ghost" onClick={() => toggleInvoicePaid(inv)} title="Mark unpaid"><Undo2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>}
-                                    {inv.status === "draft" && <Button size="sm" variant="ghost" onClick={() => deleteInvoice(inv)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>}
-                                  </div>
+                                  <button
+                                    type="button"
+                                    className="rounded p-1 hover:bg-accent"
+                                    onClick={(e) => { e.stopPropagation(); invoiceRowMenu(e, inv); }}
+                                    aria-label="More options"
+                                  >
+                                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                  </button>
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -1513,7 +1569,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
       </SlideOver>
 
       {/* ========== CONTEXT MENUS / CONFIRMS ========== */}
-      <RowContextMenu state={punchCtx} onClose={() => setPunchCtx(null)} />
+      <RowContextMenu state={rowCtx} onClose={() => setRowCtx(null)} />
 
       <DeleteConfirm
         open={deleteConfirmOpen}
