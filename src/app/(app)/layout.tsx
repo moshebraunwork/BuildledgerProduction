@@ -75,7 +75,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         fullName={user.fullName}
       />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <MobileNav isSuperadmin={user.isSuperadmin} permissions={user.permissions} />
+        <MobileNav
+          isSuperadmin={user.isSuperadmin}
+          permissions={user.permissions}
+          email={user.email}
+          fullName={user.fullName}
+        />
         <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6">{children}</main>
       </div>
       <MobileTabBar isSuperadmin={user.isSuperadmin} permissions={user.permissions} />

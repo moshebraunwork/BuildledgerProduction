@@ -2,22 +2,38 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useClerk } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { can, type PermissionMap } from "@/lib/permissions";
+import { saveTheme } from "@/app/(app)/actions";
 import { NAV } from "@/components/nav-items";
-import { HardHat, Menu, X } from "lucide-react";
+import { HardHat, Menu, X, Monitor, Moon, Sun, LogOut, User as UserIcon } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 // Mobile top bar + slide-in drawer. Hidden on md+ where the desktop sidebar
 // takes over. Fills the gap where small screens previously had no navigation.
 export function MobileNav({
-  isSuperadmin, permissions,
+  isSuperadmin, permissions, email, fullName,
 }: {
   isSuperadmin: boolean;
   permissions: PermissionMap;
+  email: string;
+  fullName: string | null;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { theme, setTheme } = useTheme();
+  const { signOut } = useClerk();
   const [open, setOpen] = React.useState(false);
+
+  async function persistTheme(next: string) {
+    setTheme(next);
+    try { await saveTheme(next); } catch { /* non-critical */ }
+  }
+
+  const initials = (fullName || email || "U").slice(0, 2).toUpperCase();
 
   // Close on navigation.
   React.useEffect(() => { setOpen(false); }, [pathname]);
@@ -126,6 +142,60 @@ export function MobileNav({
               return <NavLink key={item.href} href={item.href} label={item.label} Icon={item.icon} active={isActive(item.href)} />;
             })}
           </nav>
+
+          {/* Profile footer — identity, theme preference and sign out. */}
+          <div className="border-t p-3 space-y-3">
+            <div className="flex items-center gap-3">
+              <Avatar className="h-9 w-9 shrink-0">
+                <AvatarFallback>{initials}</AvatarFallback>
+              </Avatar>
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate text-sm font-medium">{fullName || "User"}</span>
+                <span className="truncate text-xs text-muted-foreground">{email}</span>
+              </div>
+            </div>
+
+            <Link
+              href="/settings"
+              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <UserIcon className="h-4 w-4 shrink-0" />
+              My settings
+            </Link>
+
+            <div className="space-y-1">
+              <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Theme</p>
+              <div className="grid grid-cols-3 gap-1">
+                {([
+                  { key: "light", label: "Light", Icon: Sun },
+                  { key: "dark", label: "Dark", Icon: Moon },
+                  { key: "system", label: "System", Icon: Monitor },
+                ] as const).map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => persistTheme(key)}
+                    className={cn(
+                      "flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-xs font-medium transition-colors",
+                      theme === key ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => signOut({ redirectUrl: "/login" })}
+              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <LogOut className="h-4 w-4 shrink-0" />
+              Sign out
+            </button>
+          </div>
         </div>
       </div>
     </>
