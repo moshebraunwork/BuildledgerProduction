@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { Clock, MapPin, Store, Play, Square, Loader2, Camera, Undo2, X } from "lucide-react";
+import { BackButton } from "@/components/back-button";
 import {
   getMyShiftStatus, selfPunchIn, selfStoreOut, selfStoreReturn, selfPunchOut,
 } from "./actions";
@@ -328,6 +329,11 @@ export function ClockClient({ lockedJob, userEmail }: { lockedJob: LockedJob | n
   if (!status?.employee) {
     return (
       <div className="mx-auto max-w-md space-y-4 py-10">
+        {lockedJob ? (
+          <BackButton href={`/jobs/${lockedJob.id}`} label="Back to job" className="-ml-2 text-muted-foreground" />
+        ) : (
+          <BackButton label="Back" className="-ml-2 text-muted-foreground" />
+        )}
         <div className="flex items-center gap-2">
           <Clock className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-semibold">My shift</h1>
@@ -348,6 +354,11 @@ export function ClockClient({ lockedJob, userEmail }: { lockedJob: LockedJob | n
 
   return (
     <div className="mx-auto max-w-md space-y-4 py-4">
+      {lockedJob ? (
+        <BackButton href={`/jobs/${lockedJob.id}`} label="Back to job" className="-ml-2 text-muted-foreground" />
+      ) : (
+        <BackButton label="Back" className="-ml-2 text-muted-foreground" />
+      )}
       <div className="flex items-center gap-2">
         <Clock className="h-6 w-6 text-primary" />
         <div>

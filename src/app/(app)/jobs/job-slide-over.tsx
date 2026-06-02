@@ -12,6 +12,7 @@ import {
   addJobFile as addJobFileAction, removeJobFile as removeJobFileAction,
 } from "./[id]/actions";
 import { SlideOver } from "@/components/slide-over";
+import { BackButton } from "@/components/back-button";
 import { ResizablePanels } from "@/components/resizable-panels";
 import { JobDetailSkeleton } from "@/components/skeletons";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
@@ -20,7 +21,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import NextLink from "next/link";
 import { useRouter } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -733,9 +733,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
         <div className="flex flex-col gap-4 lg:h-full">
           {/* ========== HEADER ========== */}
           <div>
-            <NextLink href="/jobs" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-              ← Back to jobs
-            </NextLink>
+            <BackButton href="/jobs" label="Back to jobs" className="-ml-2 mb-1 text-muted-foreground" />
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">{job.title}</h1>
               <Badge variant={statusVariant[job.status] ?? "secondary"} className="capitalize">{job.status}</Badge>
