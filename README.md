@@ -27,6 +27,7 @@ Fill every value in .env.local (see that file's comments for where each comes fr
    - 0002_seed.sql — company, built-in Administrator role, sample data
    - 0003 … 0010 — incremental schema additions (see each file's header)
    - 0011_audit_log_context.sql — adds actor_name / ip_address / user_agent to the activity log
+   - 0012_jobs_updated_at.sql — adds the jobs.updated_at column the job editor writes to
    If your database predates the activity log changes, running 0011 backfills the new columns the Activity Log page reads.
 
 ## Step 3 — Auth (Clerk)
