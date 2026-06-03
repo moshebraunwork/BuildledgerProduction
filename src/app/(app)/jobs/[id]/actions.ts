@@ -3,7 +3,7 @@
 import { sql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { audit } from "@/lib/audit";
+import { auditUser } from "@/lib/audit";
 import { computeBilling } from "@/lib/billing";
 import { revalidatePath } from "next/cache";
 
@@ -28,16 +28,25 @@ export async function addCrew(jobId: string, workerId: string) {
   if (!user) return { error: "Forbidden" };
   if (!(await jobInCompany(jobId, user.companyId))) return { error: "Not found" };
   // Only attach employees that belong to the same company.
-  const emp = await sql`select 1 from public.employees where id = ${workerId} and company_id = ${user.companyId} limit 1`;
+  const emp = await sql`select name from public.employees where id = ${workerId} and company_id = ${user.companyId} limit 1`;
   if (!emp.length) return { error: "Not found" };
   await sql`insert into public.job_employees (job_id, employee_id) values (${jobId}, ${workerId}) on conflict do nothing`;
+  await auditUser(user, {
+    action: "crew.add", entity: "job", entityId: jobId,
+    detail: { employee: emp[0].name },
+  });
   return { ok: true };
 }
 export async function removeCrew(jobId: string, workerId: string) {
   const user = await requireUser("jobs.edit");
   if (!user) return { error: "Forbidden" };
   if (!(await jobInCompany(jobId, user.companyId))) return { error: "Not found" };
+  const emp = await sql`select name from public.employees where id = ${workerId} and company_id = ${user.companyId} limit 1`;
   await sql`delete from public.job_employees where job_id = ${jobId} and employee_id = ${workerId}`;
+  await auditUser(user, {
+    action: "crew.remove", entity: "job", entityId: jobId,
+    detail: { employee: emp[0]?.name },
+  });
   return { ok: true };
 }
 
@@ -55,7 +64,11 @@ export async function punchIn(params: {
   `;
   // auto-activate the job on first punch
   await sql`update public.jobs set status = 'active' where id = ${params.jobId} and company_id = ${user.companyId} and status = 'scheduled'`;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.in", entity: "punch", entityId: rows[0].id });
+  const empName = await sql`select name from public.employees where id = ${params.workerId} and company_id = ${user.companyId} limit 1`;
+  await auditUser(user, {
+    action: "punch.in", entity: "punch", entityId: rows[0].id,
+    detail: { employee: empName[0]?.name, kind: params.kind },
+  });
   return { data: rows[0] };
 }
 
@@ -67,7 +80,7 @@ export async function punchOut(params: { punchId: string; note: string | null; p
     set ended_at = now(), note = ${params.note}, ended_photo_url = ${params.photoUrl}
     where id = ${params.punchId} and company_id = ${user.companyId}
   `;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.out", entity: "punch", entityId: params.punchId });
+  await auditUser(user, { action: "punch.out", entity: "punch", entityId: params.punchId });
   return { ok: true };
 }
 
@@ -98,17 +111,32 @@ export async function addJobItem(params: {
     set stock = greatest(0, stock - ${qty})
     where id = ${item.id} and company_id = ${user.companyId}
   `;
+  await auditUser(user, {
+    action: "job_item.add", entity: "job", entityId: params.jobId,
+    detail: { item: item.name, qty, charge: item.charge },
+  });
   return { data: rows[0] };
 }
 export async function removeJobItem(id: string) {
   const user = await requireUser("jobs.edit");
   if (!user) return { error: "Forbidden" };
   // job_items has no company_id; scope via its parent job.
+  const before = await sql`
+    select ji.job_id, ji.name, ji.qty from public.job_items ji
+    join public.jobs j on j.id = ji.job_id
+    where ji.id = ${id} and j.company_id = ${user.companyId} limit 1
+  `;
   await sql`
     delete from public.job_items ji
     using public.jobs j
     where ji.id = ${id} and ji.job_id = j.id and j.company_id = ${user.companyId}
   `;
+  if (before[0]) {
+    await auditUser(user, {
+      action: "job_item.remove", entity: "job", entityId: before[0].job_id,
+      detail: { item: before[0].name, qty: before[0].qty },
+    });
+  }
   return { ok: true };
 }
 export async function setJobItemExcluded(id: string, excluded: boolean) {
@@ -133,16 +161,31 @@ export async function addJobCost(params: { jobId: string; label: string; cost: n
     values (${params.jobId}, ${params.label}, ${params.cost}, ${params.charge})
     returning *
   `;
+  await auditUser(user, {
+    action: "job_cost.add", entity: "job", entityId: params.jobId,
+    detail: { label: params.label, charge: params.charge },
+  });
   return { data: rows[0] };
 }
 export async function removeJobCost(id: string) {
   const user = await requireUser("jobs.edit");
   if (!user) return { error: "Forbidden" };
+  const before = await sql`
+    select jc.job_id, jc.label, jc.charge from public.job_costs jc
+    join public.jobs j on j.id = jc.job_id
+    where jc.id = ${id} and j.company_id = ${user.companyId} limit 1
+  `;
   await sql`
     delete from public.job_costs jc
     using public.jobs j
     where jc.id = ${id} and jc.job_id = j.id and j.company_id = ${user.companyId}
   `;
+  if (before[0]) {
+    await auditUser(user, {
+      action: "job_cost.remove", entity: "job", entityId: before[0].job_id,
+      detail: { label: before[0].label, charge: before[0].charge },
+    });
+  }
   return { ok: true };
 }
 export async function setJobCostExcluded(id: string, excluded: boolean) {
@@ -220,7 +263,10 @@ export async function generateInvoice(params: { jobId: string; excludeStoreTime?
        ${subtotal}, ${tax}, ${total}, ${JSON.stringify(lines)}, 'draft')
     returning id, number, status, subtotal, tax, total, line_items, created_at
   `;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "invoice.create", entity: "invoice", entityId: rows[0].id, detail: { number, total } });
+  await auditUser(user, {
+    action: "invoice.create", entity: "invoice", entityId: rows[0].id,
+    detail: { number, total, customer: job.customer_name },
+  });
   revalidatePath("/invoices");
   return { data: rows[0] };
 }
@@ -231,8 +277,12 @@ export async function setJobStatus(jobId: string, status: string) {
   if (!user) return { error: "Forbidden" };
   // Whitelist the status values the UI can set.
   if (!["scheduled", "active", "complete"].includes(status)) return { error: "Invalid status" };
+  const before = await sql`select title, status from public.jobs where id = ${jobId} and company_id = ${user.companyId} limit 1`;
   await sql`update public.jobs set status = ${status} where id = ${jobId} and company_id = ${user.companyId}`;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "job.status", entity: "job", entityId: jobId, detail: { status } });
+  await auditUser(user, {
+    action: "job.status", entity: "job", entityId: jobId,
+    detail: { title: before[0]?.title, from: before[0]?.status, to: status },
+  });
   revalidatePath("/jobs");
   return { ok: true };
 }
@@ -258,7 +308,11 @@ export async function adminCreatePunch(params: {
        ${params.startedPhotoUrl}, ${params.endedPhotoUrl}, ${user.id}, now())
     returning *
   `;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.admin_create", entity: "punch", entityId: rows[0].id });
+  const empName = await sql`select name from public.employees where id = ${params.employeeId} and company_id = ${user.companyId} limit 1`;
+  await auditUser(user, {
+    action: "punch.admin_create", entity: "punch", entityId: rows[0].id,
+    detail: { employee: empName[0]?.name, kind: params.kind, started_at: params.startedAt, ended_at: params.endedAt },
+  });
   return { data: rows[0] };
 }
 
@@ -285,7 +339,10 @@ export async function adminUpdatePunch(punchId: string, params: {
       edited_at = now()
     where id = ${punchId} and company_id = ${user.companyId}
   `;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.admin_edit", entity: "punch", entityId: punchId });
+  await auditUser(user, {
+    action: "punch.admin_edit", entity: "punch", entityId: punchId,
+    detail: { started_at: params.startedAt, ended_at: params.endedAt, kind: params.kind },
+  });
   return { ok: true };
 }
 
@@ -296,7 +353,7 @@ export async function adminDeletePunchEndTime(punchId: string) {
     update public.punches set ended_at = null, ended_photo_url = null, edited_by = ${user.id}, edited_at = now()
     where id = ${punchId} and company_id = ${user.companyId}
   `;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.admin_remove_end", entity: "punch", entityId: punchId });
+  await auditUser(user, { action: "punch.admin_remove_end", entity: "punch", entityId: punchId });
   return { ok: true };
 }
 
@@ -308,7 +365,7 @@ export async function adminDeletePunch(punchId: string) {
   if (!rows.length) return { error: "Not found" };
   if (rows[0].ended_at) return { error: "Remove end time first before deleting this punch." };
   await sql`delete from public.punches where id = ${punchId} and company_id = ${user.companyId}`;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.admin_delete", entity: "punch", entityId: punchId });
+  await auditUser(user, { action: "punch.admin_delete", entity: "punch", entityId: punchId });
   return { ok: true };
 }
 
@@ -322,6 +379,7 @@ export async function saveJobNotes(jobId: string, bodyHtml: string) {
     values (${user.companyId}, ${jobId}, ${bodyHtml}, now(), ${user.id})
     on conflict (job_id) do update set body_html = ${bodyHtml}, updated_at = now(), updated_by = ${user.id}
   `;
+  await auditUser(user, { action: "job_notes.save", entity: "job", entityId: jobId });
   return { ok: true };
 }
 
@@ -345,12 +403,23 @@ export async function addJobFile(params: {
     values (${user.companyId}, ${params.jobId}, ${name}, ${params.url}, ${params.contentType}, ${params.sizeBytes}, ${kind}, ${user.id})
     returning id, name, url, content_type, size_bytes, kind, created_at
   `;
+  await auditUser(user, {
+    action: "media.upload", entity: "job", entityId: params.jobId,
+    detail: { name, kind, size_bytes: params.sizeBytes },
+  });
   return { data: rows[0] };
 }
 
 export async function removeJobFile(id: string) {
   const user = await requireUser("media.manage");
   if (!user) return { error: "Forbidden" };
+  const before = await sql`select job_id, name, kind from public.job_files where id = ${id} and company_id = ${user.companyId} limit 1`;
   await sql`delete from public.job_files where id = ${id} and company_id = ${user.companyId}`;
+  if (before[0]) {
+    await auditUser(user, {
+      action: "media.delete", entity: "job", entityId: before[0].job_id,
+      detail: { name: before[0].name, kind: before[0].kind },
+    });
+  }
   return { ok: true };
 }

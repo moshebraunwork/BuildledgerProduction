@@ -7,7 +7,7 @@ import { useTheme } from "next-themes";
 import { useClerk } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { can, type PermissionMap } from "@/lib/permissions";
-import { saveTheme } from "@/app/(app)/actions";
+import { saveTheme, recordSignOut } from "@/app/(app)/actions";
 import { NAV } from "@/components/nav-items";
 import { HardHat, Menu, X, Monitor, Moon, Sun, LogOut, User as UserIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -31,6 +31,12 @@ export function MobileNav({
   async function persistTheme(next: string) {
     setTheme(next);
     try { await saveTheme(next); } catch { /* non-critical */ }
+  }
+
+  // Record the sign-out (best-effort) before Clerk tears down the session.
+  async function handleSignOut() {
+    try { await recordSignOut(); } catch { /* non-critical */ }
+    await signOut({ redirectUrl: "/login" });
   }
 
   const initials = (fullName || email || "U").slice(0, 2).toUpperCase();
@@ -189,7 +195,7 @@ export function MobileNav({
 
             <button
               type="button"
-              onClick={() => signOut({ redirectUrl: "/login" })}
+              onClick={handleSignOut}
               className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <LogOut className="h-4 w-4 shrink-0" />

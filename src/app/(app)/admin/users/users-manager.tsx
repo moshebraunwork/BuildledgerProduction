@@ -15,6 +15,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, Plus, UserCheck, AlertTriangle, Mail } from "lucide-react";
 import { setUserRole, setUserActive, setUserFullName, getUserLogs, getUserSessions, inviteUser, updateUserEmail, reinviteUser } from "./actions";
 import { fmtDate } from "@/lib/utils";
+import { humanizeAction, describeDevice, summarizeDetail } from "@/lib/audit-labels";
 
 interface UserRow {
   id: string; clerk_user_id: string; email: string; full_name: string | null;
@@ -470,22 +471,25 @@ export function UsersManager({ initialUsers, roles }: { initialUsers: UserRow[];
                   <p className="text-sm text-muted-foreground py-4 text-center">No activity recorded for this user.</p>
                 ) : (
                   <div className="space-y-2">
-                    {detailLogs.map((l) => (
-                      <div key={l.id} className="rounded-md border p-3 space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <Badge variant="secondary" className="font-mono text-xs">{l.action}</Badge>
-                          <span className="text-xs text-muted-foreground">{new Date(l.created_at).toLocaleString()}</span>
+                    {detailLogs.map((l) => {
+                      const device = describeDevice(l.user_agent);
+                      const summary = summarizeDetail(l.detail);
+                      return (
+                        <div key={l.id} className="rounded-md border p-3 space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium">{humanizeAction(l.action)}</span>
+                            <span className="text-xs text-muted-foreground shrink-0">{new Date(l.created_at).toLocaleString()}</span>
+                          </div>
+                          <Badge variant="secondary" className="font-mono text-[10px]">{l.action}</Badge>
+                          {summary && <p className="text-xs text-muted-foreground">{summary}</p>}
+                          {(device || l.ip_address) && (
+                            <p className="text-[11px] text-muted-foreground">
+                              {[device, l.ip_address].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
                         </div>
-                        {l.entity && (
-                          <p className="text-xs text-muted-foreground">
-                            {l.entity}{l.entity_id ? ` · ${String(l.entity_id).slice(0, 8)}` : ""}
-                          </p>
-                        )}
-                        {l.detail && Object.keys(l.detail).length > 0 && (
-                          <p className="text-xs text-muted-foreground font-mono">{JSON.stringify(l.detail)}</p>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

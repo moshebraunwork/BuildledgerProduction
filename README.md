@@ -22,9 +22,12 @@ Fill every value in .env.local (see that file's comments for where each comes fr
 ## Step 2 — Database (Neon)
 
 1. Create a Neon project; copy its pooled DATABASE_URL into .env.local.
-2. In the Neon SQL editor, run the two files in supabase/migrations_neon/ in order:
+2. In the Neon SQL editor, run every file in supabase/migrations_neon/ in numeric order (0001 → newest). They are additive and idempotent, so re-running on an existing database is safe.
    - 0001_init.sql — all tables (no Supabase RLS; users.clerk_user_id links to Clerk; punch note/photo columns included)
    - 0002_seed.sql — company, built-in Administrator role, sample data
+   - 0003 … 0010 — incremental schema additions (see each file's header)
+   - 0011_audit_log_context.sql — adds actor_name / ip_address / user_agent to the activity log
+   If your database predates the activity log changes, running 0011 backfills the new columns the Activity Log page reads.
 
 ## Step 3 — Auth (Clerk)
 
