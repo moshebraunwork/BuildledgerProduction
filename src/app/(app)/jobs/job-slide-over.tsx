@@ -321,23 +321,30 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
   async function saveEdit() {
     if (!job || !editForm.title) return;
     setSaving(true);
-    const res = await updateJob(job.id, {
-      title: editForm.title!, place: editForm.place ?? null,
-      scheduled_date: editForm.scheduled_date ?? null,
-      customer_name: editForm.customer_name ?? null,
-      customer_email: editForm.customer_email ?? null,
-      estimate: Number(editForm.estimate ?? 0),
-      billing_mode: editForm.billing_mode ?? "itemized",
-      billing_rate: editForm.billing_rate ?? null,
-      status: editForm.status,
-    });
-    setSaving(false);
-    if (res.error) return toast({ title: "Save failed", description: res.error, variant: "destructive" });
-    const updated = res.data as Job;
-    setJob(updated);
-    setEditing(false);
-    router.refresh();
-    toast({ title: "Job saved", variant: "success" });
+    try {
+      const res = await updateJob(job.id, {
+        title: editForm.title!, place: editForm.place ?? null,
+        scheduled_date: editForm.scheduled_date ?? null,
+        customer_name: editForm.customer_name ?? null,
+        customer_email: editForm.customer_email ?? null,
+        estimate: Number(editForm.estimate ?? 0),
+        billing_mode: editForm.billing_mode ?? "itemized",
+        billing_rate: editForm.billing_rate ?? null,
+        status: editForm.status,
+      });
+      if (res.error) return toast({ title: "Save failed", description: res.error, variant: "destructive" });
+      const updated = res.data as Job;
+      setJob(updated);
+      setEditing(false);
+      router.refresh();
+      toast({ title: "Job saved", variant: "success" });
+    } catch (e: any) {
+      // A rejected server action (e.g. a transient DB/network error) must not
+      // leave the button stuck on "Saving…" — always re-enable and tell the user.
+      toast({ title: "Save failed", description: e?.message ?? "Something went wrong. Please try again.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleMarkComplete() {

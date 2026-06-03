@@ -15,7 +15,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Monitor, Moon, Sun, LogOut, User } from "lucide-react";
-import { saveTheme } from "@/app/(app)/actions";
+import { saveTheme, recordSignOut } from "@/app/(app)/actions";
 
 export function Topbar({ email, fullName }: { email: string; fullName: string | null }) {
   const router = useRouter();
@@ -29,6 +29,16 @@ export function Topbar({ email, fullName }: { email: string; fullName: string | 
     } catch {
       /* non-critical */
     }
+  }
+
+  // Record the sign-out (best-effort) before Clerk tears down the session.
+  async function handleSignOut() {
+    try {
+      await recordSignOut();
+    } catch {
+      /* non-critical — never block sign-out */
+    }
+    await signOut({ redirectUrl: "/login" });
   }
 
   const initials = (fullName || email).slice(0, 2).toUpperCase();
@@ -75,7 +85,7 @@ export function Topbar({ email, fullName }: { email: string; fullName: string | 
           <DropdownMenuItem onClick={() => router.push("/settings")}>
             <User className="h-4 w-4" /> Settings
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => signOut({ redirectUrl: "/login" })}>
+          <DropdownMenuItem onClick={handleSignOut}>
             <LogOut className="h-4 w-4" /> Sign out
           </DropdownMenuItem>
         </DropdownMenuContent>

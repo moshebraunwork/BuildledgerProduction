@@ -3,7 +3,7 @@
 import { sql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { audit } from "@/lib/audit";
+import { auditUser, diff } from "@/lib/audit";
 import { round2 } from "@/lib/billing";
 import { revalidatePath } from "next/cache";
 
@@ -27,7 +27,7 @@ export async function updateInvoice(
   if (!can(user.isSuperadmin, user.permissions, "invoices.edit")) return { error: "Forbidden" };
 
   const rows = await sql`
-    select subtotal, tax, status from public.invoices
+    select number, subtotal, tax, total, status, customer_name from public.invoices
     where id = ${invoiceId} and company_id = ${user.companyId}
     limit 1
   `;
@@ -61,13 +61,19 @@ export async function updateInvoice(
     where id = ${invoiceId} and company_id = ${user.companyId}
   `;
 
-  await audit({
-    companyId: user.companyId,
-    actorId: user.id,
-    actorEmail: user.email,
+  await auditUser(user, {
     action: "invoice.edit",
     entity: "invoice",
     entityId: invoiceId,
+    detail: {
+      number: rows[0].number,
+      changes: diff(
+        { subtotal: rows[0].subtotal, tax: rows[0].tax, total: rows[0].total, customer_name: rows[0].customer_name },
+        { subtotal, tax, total, customer_name: data.customer_name },
+        ["customer_name", "subtotal", "tax", "total"]
+      ),
+      line_items: items.length,
+    },
   });
 
   revalidatePath("/invoices");
@@ -80,11 +86,14 @@ export async function markInvoicePaid(invoiceId: string) {
   const user = await getCurrentUser();
   if (!user) return { error: "Unauthorized" };
   if (!can(user.isSuperadmin, user.permissions, "invoices.edit")) return { error: "Forbidden" };
-  const rows = await sql`select status from public.invoices where id = ${invoiceId} and company_id = ${user.companyId} limit 1`;
+  const rows = await sql`select number, status, total from public.invoices where id = ${invoiceId} and company_id = ${user.companyId} limit 1`;
   if (!rows[0]) return { error: "Invoice not found" };
   if (rows[0].status === "draft") return { error: "Send the invoice before marking it paid." };
   await sql`update public.invoices set status = 'paid', paid_at = now() where id = ${invoiceId} and company_id = ${user.companyId}`;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "invoice.paid", entity: "invoice", entityId: invoiceId });
+  await auditUser(user, {
+    action: "invoice.paid", entity: "invoice", entityId: invoiceId,
+    detail: { number: rows[0].number, total: rows[0].total },
+  });
   revalidatePath("/invoices");
   revalidatePath("/dashboard");
   return { ok: true };
@@ -95,11 +104,14 @@ export async function markInvoiceUnpaid(invoiceId: string) {
   const user = await getCurrentUser();
   if (!user) return { error: "Unauthorized" };
   if (!can(user.isSuperadmin, user.permissions, "invoices.edit")) return { error: "Forbidden" };
-  const rows = await sql`select status from public.invoices where id = ${invoiceId} and company_id = ${user.companyId} limit 1`;
+  const rows = await sql`select number, status, total from public.invoices where id = ${invoiceId} and company_id = ${user.companyId} limit 1`;
   if (!rows[0]) return { error: "Invoice not found" };
   if (rows[0].status !== "paid") return { error: "Invoice is not marked paid." };
   await sql`update public.invoices set status = 'sent', paid_at = null where id = ${invoiceId} and company_id = ${user.companyId}`;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "invoice.unpaid", entity: "invoice", entityId: invoiceId });
+  await auditUser(user, {
+    action: "invoice.unpaid", entity: "invoice", entityId: invoiceId,
+    detail: { number: rows[0].number, total: rows[0].total },
+  });
   revalidatePath("/invoices");
   revalidatePath("/dashboard");
   return { ok: true };
@@ -109,10 +121,13 @@ export async function deleteInvoice(invoiceId: string) {
   const user = await getCurrentUser();
   if (!user) return { error: "Unauthorized" };
   if (!can(user.isSuperadmin, user.permissions, "invoices.edit")) return { error: "Forbidden" };
-  const rows = await sql`select id, status from public.invoices where id = ${invoiceId} and company_id = ${user.companyId} limit 1`;
+  const rows = await sql`select id, number, status, total from public.invoices where id = ${invoiceId} and company_id = ${user.companyId} limit 1`;
   if (!rows[0]) return { error: "Invoice not found" };
   if (rows[0].status !== "draft") return { error: "Only draft invoices can be deleted" };
   await sql`delete from public.invoices where id = ${invoiceId}`;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "invoice.delete", entity: "invoice", entityId: invoiceId });
+  await auditUser(user, {
+    action: "invoice.delete", entity: "invoice", entityId: invoiceId,
+    detail: { number: rows[0].number, total: rows[0].total },
+  });
   return { ok: true };
 }

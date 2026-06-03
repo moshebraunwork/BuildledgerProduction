@@ -3,7 +3,7 @@
 import { sql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { audit } from "@/lib/audit";
+import { auditUser, diff } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 
 interface EmployeeInput {
@@ -11,6 +11,8 @@ interface EmployeeInput {
   pay_rate: number; require_punch_photo: boolean;
   invite_email?: string | null;
 }
+
+const EMPLOYEE_AUDIT_FIELDS = ["name", "role_title", "phone", "pay_rate", "require_punch_photo"];
 
 export async function createEmployee(input: EmployeeInput) {
   const user = await getCurrentUser();
@@ -20,7 +22,10 @@ export async function createEmployee(input: EmployeeInput) {
     values (${user.companyId}, ${input.name}, ${input.role_title}, ${input.phone}, ${input.pay_rate}, ${input.require_punch_photo})
     returning *
   `;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "employee.create", entity: "employee", entityId: rows[0].id });
+  await auditUser(user, {
+    action: "employee.create", entity: "employee", entityId: rows[0].id,
+    detail: { name: input.name, role: input.role_title, pay_rate: input.pay_rate },
+  });
 
   // Optionally invite them to the system right away
   if (input.invite_email) {
@@ -36,20 +41,32 @@ export async function createEmployee(input: EmployeeInput) {
 export async function updateEmployee(id: string, input: EmployeeInput) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "employees.edit")) return { error: "Forbidden" };
-  await sql`
+  const beforeRows = await sql`
+    select name, role_title, phone, pay_rate, require_punch_photo
+    from public.employees where id = ${id} and company_id = ${user.companyId} limit 1
+  `;
+  const rows = await sql`
     update public.employees set name = ${input.name}, role_title = ${input.role_title}, phone = ${input.phone},
       pay_rate = ${input.pay_rate}, require_punch_photo = ${input.require_punch_photo}
     where id = ${id} and company_id = ${user.companyId}
+    returning name, role_title, phone, pay_rate, require_punch_photo
   `;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "worker.update", entity: "worker", entityId: id });
+  await auditUser(user, {
+    action: "employee.update", entity: "employee", entityId: id,
+    detail: { name: input.name, changes: diff(beforeRows[0], rows[0], EMPLOYEE_AUDIT_FIELDS) },
+  });
   return { ok: true };
 }
 
 export async function deleteEmployee(id: string) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "employees.delete")) return { error: "Forbidden" };
+  const beforeRows = await sql`select name, role_title from public.employees where id = ${id} and company_id = ${user.companyId} limit 1`;
   await sql`delete from public.employees where id = ${id} and company_id = ${user.companyId}`;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "worker.delete", entity: "worker", entityId: id });
+  await auditUser(user, {
+    action: "employee.delete", entity: "employee", entityId: id,
+    detail: beforeRows[0] ? { name: beforeRows[0].name, role: beforeRows[0].role_title } : undefined,
+  });
   return { ok: true };
 }
 
@@ -96,7 +113,10 @@ export async function inviteEmployee(employeeId: string, email: string) {
       `;
     }
 
-    await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "employee.invite", entity: "employee", entityId: employeeId, detail: { email } });
+    await auditUser(user, {
+      action: "employee.invite", entity: "employee", entityId: employeeId,
+      detail: { name: empName, email },
+    });
     return { ok: true, status: "pending" as const };
   } catch (e: any) {
     return { error: e?.errors?.[0]?.message ?? e?.message ?? "Invite failed" };
@@ -140,7 +160,10 @@ export async function resendInvite(employeeId: string) {
       set invite_status = 'pending', clerk_invitation_id = ${invitation.id}
       where id = ${employeeId} and company_id = ${user.companyId}
     `;
-    await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "employee.invite_resend", entity: "employee", entityId: employeeId });
+    await auditUser(user, {
+      action: "employee.invite_resend", entity: "employee", entityId: employeeId,
+      detail: { email: emp.invite_email },
+    });
     return { ok: true };
   } catch (e: any) {
     return { error: e?.errors?.[0]?.message ?? e?.message ?? "Resend failed" };

@@ -10,7 +10,7 @@
 
 import { sql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { audit } from "@/lib/audit";
+import { auditUser } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 
 // Resolve the employee row linked to the signed-in user (by internal user id or
@@ -141,7 +141,10 @@ export async function selfPunchIn(params: {
       where id = ${params.jobId} and company_id = ${user.companyId} and lat is null and lng is null
     `;
   }
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.self_in", entity: "punch", entityId: rows[0].id });
+  await auditUser(user, {
+    action: "punch.self_in", entity: "punch", entityId: rows[0].id,
+    detail: { employee: employee.name, jobId: params.jobId },
+  });
   revalidatePath("/jobs");
   return { ok: true };
 }
@@ -168,7 +171,10 @@ export async function selfStoreOut() {
     insert into public.punches (company_id, job_id, employee_id, kind)
     values (${user.companyId}, ${cur.job_id}, ${employee.id}, 'store')
   `;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.store_out", entity: "punch", entityId: cur.id });
+  await auditUser(user, {
+    action: "punch.store_out", entity: "punch", entityId: cur.id,
+    detail: { employee: employee.name },
+  });
   return { ok: true };
 }
 
@@ -193,7 +199,10 @@ export async function selfStoreReturn() {
     insert into public.punches (company_id, job_id, employee_id, kind)
     values (${user.companyId}, ${cur.job_id}, ${employee.id}, 'site')
   `;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.store_return", entity: "punch", entityId: cur.id });
+  await auditUser(user, {
+    action: "punch.store_return", entity: "punch", entityId: cur.id,
+    detail: { employee: employee.name },
+  });
   return { ok: true };
 }
 
@@ -221,7 +230,10 @@ export async function selfPunchOut(params: { photoUrl: string | null }) {
     update public.punches set ended_at = now(), ended_photo_url = ${params.photoUrl}
     where id = ${cur.id} and company_id = ${user.companyId}
   `;
-  await audit({ companyId: user.companyId, actorId: user.id, actorEmail: user.email, action: "punch.self_out", entity: "punch", entityId: cur.id });
+  await auditUser(user, {
+    action: "punch.self_out", entity: "punch", entityId: cur.id,
+    detail: { employee: employee.name },
+  });
   revalidatePath("/jobs");
   return { ok: true };
 }
