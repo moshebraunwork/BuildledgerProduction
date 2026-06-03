@@ -13,6 +13,7 @@ import { sql } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import type { CurrentUser } from "@/lib/auth";
 import type { FunctionDeclaration } from "./gemini";
+import { geocode, haversineMiles } from "./geo";
 
 interface ToolDef {
   name: string;
@@ -321,6 +322,92 @@ const TOOLS: ToolDef[] = [
         .map(([employee, hours]) => ({ employee, hours: Math.round(hours * 100) / 100 }))
         .sort((a, b) => b.hours - a.hours);
       return { window_days: days, hours_by_employee: hoursByEmployee, recent_punches: rows };
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  {
+    name: "geocode_place",
+    description:
+      "Look up a place or address described in words (e.g. 'Evergreen Supermarket, Spring Valley') and return matching locations with their full address and coordinates. Use this to figure out where the user is before finding nearby jobs. If it returns clearly different places, ask the user which one they mean.",
+    permission: null,
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "The place or address to look up, as the user described it." },
+      },
+      required: ["query"],
+    },
+    async run(_user, args) {
+      const q = typeof args.query === "string" ? args.query.trim() : "";
+      if (!q) return { matches: [] };
+      const matches = await geocode(q, 5);
+      return { count: matches.length, matches };
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  {
+    name: "find_nearby_jobs",
+    description:
+      "Given a latitude and longitude (get them from geocode_place first), return the company's jobs ranked by straight-line distance, nearest first, with the distance in miles. Jobs whose address can't be located are listed separately. Always tell the user which location you measured from, and note that distances are approximate (straight-line, not driving).",
+    permission: "jobs.view",
+    parameters: {
+      type: "object",
+      properties: {
+        lat: { type: "number", description: "Latitude of the reference point (from geocode_place)." },
+        lng: { type: "number", description: "Longitude of the reference point (from geocode_place)." },
+        limit: { type: "number", description: "Max jobs to return (default 10, max 25)." },
+        include_complete: { type: "boolean", description: "Include completed jobs too (default false)." },
+      },
+      required: ["lat", "lng"],
+    },
+    async run(user, args) {
+      const lat = Number(args.lat);
+      const lng = Number(args.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return { error: "Provide numeric lat and lng — call geocode_place first to get them." };
+      }
+      const limit = clampLimit(args.limit, 10, 25);
+      const includeComplete = args.include_complete === true;
+      // Active/scheduled jobs first (most relevant), so the few we geocode are
+      // the ones that matter; completed jobs are excluded unless asked for.
+      const rows = await sql`
+        select id::text as id, title, place, customer_name, status, lat, lng
+        from public.jobs
+        where company_id = ${user.companyId}
+          and (${includeComplete} = true or status <> 'complete')
+        order by case status when 'active' then 0 when 'scheduled' then 1 else 2 end, created_at desc
+        limit 60
+      `;
+      const located: any[] = [];
+      const unlocated: any[] = [];
+      let geocoded = 0; // cap on-the-fly lookups to keep latency bounded
+      for (const j of rows as any[]) {
+        let jlat = j.lat != null ? Number(j.lat) : NaN;
+        let jlng = j.lng != null ? Number(j.lng) : NaN;
+        if ((!Number.isFinite(jlat) || !Number.isFinite(jlng)) && j.place && geocoded < 12) {
+          geocoded++;
+          const g = await geocode(String(j.place), 1);
+          if (g[0]) {
+            jlat = g[0].lat;
+            jlng = g[0].lng;
+          }
+        }
+        if (Number.isFinite(jlat) && Number.isFinite(jlng)) {
+          located.push({
+            title: j.title,
+            place: j.place,
+            customer: j.customer_name,
+            status: j.status,
+            distance_miles: Math.round(haversineMiles(lat, lng, jlat, jlng) * 10) / 10,
+          });
+        } else {
+          unlocated.push({ title: j.title, place: j.place, status: j.status });
+        }
+      }
+      located.sort((a, b) => a.distance_miles - b.distance_miles);
+      return { from: { lat, lng }, nearest: located.slice(0, limit), unlocated };
     },
   },
 ];

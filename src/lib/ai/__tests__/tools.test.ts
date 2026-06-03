@@ -18,9 +18,15 @@ function userWith(perms: Record<string, boolean>, isSuperadmin = false): Current
 }
 
 describe("toolsForUser", () => {
-  it("always exposes the permission-free context tool", () => {
+  it("always exposes the permission-free tools (context + geocoding)", () => {
     const names = toolsForUser(userWith({})).map((t) => t.name);
     expect(names).toContain("get_context");
+    expect(names).toContain("geocode_place");
+  });
+
+  it("gates find_nearby_jobs behind jobs.view", () => {
+    expect(toolsForUser(userWith({})).map((t) => t.name)).not.toContain("find_nearby_jobs");
+    expect(toolsForUser(userWith({ "jobs.view": true })).map((t) => t.name)).toContain("find_nearby_jobs");
   });
 
   it("only exposes data tools the user is permitted to use", () => {
