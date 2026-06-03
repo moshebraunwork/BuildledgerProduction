@@ -56,13 +56,26 @@ export async function setUserFullName(userId: string, fullName: string) {
 export async function getUserLogs(userId: string) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "admin.users")) return { error: "Forbidden" };
-  const logs = await sql`
-    select id, action, entity, entity_id::text as entity_id, detail, ip_address, user_agent, created_at
-    from public.audit_log
-    where company_id = ${user.companyId} and actor_id = ${userId}
-    order by created_at desc
-    limit 100
-  `;
+  // ip_address / user_agent arrive with migration 0011 — fall back gracefully if
+  // the database hasn't been migrated yet so this panel never errors.
+  let logs: any[];
+  try {
+    logs = (await sql`
+      select id, action, entity, entity_id::text as entity_id, detail, ip_address, user_agent, created_at
+      from public.audit_log
+      where company_id = ${user.companyId} and actor_id = ${userId}
+      order by created_at desc
+      limit 100
+    `) as any[];
+  } catch {
+    logs = (await sql`
+      select id, action, entity, entity_id::text as entity_id, detail, null as ip_address, null as user_agent, created_at
+      from public.audit_log
+      where company_id = ${user.companyId} and actor_id = ${userId}
+      order by created_at desc
+      limit 100
+    `) as any[];
+  }
   return { data: logs };
 }
 

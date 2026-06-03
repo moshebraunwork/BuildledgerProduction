@@ -80,7 +80,27 @@ export async function audit(params: AuditParams) {
       )
     `;
   } catch (e) {
-    logger.error("audit", "audit log write failed", { action: params.action, err: e });
+    // The actor_name / ip_address / user_agent columns only exist once the 0011
+    // migration has run. On a database that hasn't been migrated yet, fall back
+    // to the original column set so logging keeps working (and so a schema lag
+    // can never surface as an error in the action being recorded).
+    try {
+      await sql`
+        insert into public.audit_log
+          (company_id, actor_id, actor_email, action, entity, entity_id, detail)
+        values (
+          ${params.companyId},
+          ${params.actorId},
+          ${params.actorEmail},
+          ${params.action},
+          ${params.entity ?? null},
+          ${params.entityId ?? null},
+          ${params.detail ? JSON.stringify(params.detail) : null}
+        )
+      `;
+    } catch (e2) {
+      logger.error("audit", "audit log write failed", { action: params.action, err: e2 });
+    }
   }
 }
 
