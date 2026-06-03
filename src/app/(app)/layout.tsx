@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { can } from "@/lib/permissions";
 import { Sidebar } from "@/components/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ApplyTheme } from "@/components/apply-theme";
+import { AskAiProvider } from "@/components/ask-ai/ask-ai-context";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -65,25 +67,40 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     );
   }
 
+  const c = (perm: string) => can(user.isSuperadmin, user.permissions, perm);
+
   return (
-    <div className="flex h-screen overflow-hidden">
-      <ApplyTheme theme={user.theme} />
-      <Sidebar
-        isSuperadmin={user.isSuperadmin}
-        permissions={user.permissions}
-        email={user.email}
-        fullName={user.fullName}
-      />
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <MobileNav
+    <AskAiProvider
+      canUse={c("ai.use")}
+      userName={user.fullName}
+      capabilities={{
+        logs: c("logs.view"),
+        jobs: c("jobs.view"),
+        invoices: c("invoices.view"),
+        inventory: c("inventory.view"),
+        employees: c("employees.view"),
+        time: c("punches.view"),
+      }}
+    >
+      <div className="flex h-screen overflow-hidden">
+        <ApplyTheme theme={user.theme} />
+        <Sidebar
           isSuperadmin={user.isSuperadmin}
           permissions={user.permissions}
           email={user.email}
           fullName={user.fullName}
         />
-        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6">{children}</main>
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <MobileNav
+            isSuperadmin={user.isSuperadmin}
+            permissions={user.permissions}
+            email={user.email}
+            fullName={user.fullName}
+          />
+          <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6">{children}</main>
+        </div>
+        <MobileTabBar isSuperadmin={user.isSuperadmin} permissions={user.permissions} />
       </div>
-      <MobileTabBar isSuperadmin={user.isSuperadmin} permissions={user.permissions} />
-    </div>
+    </AskAiProvider>
   );
 }

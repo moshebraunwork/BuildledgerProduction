@@ -5,20 +5,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { can, type PermissionMap } from "@/lib/permissions";
-import { LayoutDashboard, Hammer, FileText, Users, Clock } from "lucide-react";
+import { LayoutDashboard, Hammer, Users, Clock, Sparkles } from "lucide-react";
+import { useAskAi } from "@/components/ask-ai/ask-ai-context";
 
 // App-style bottom tab bar (mobile only). Shows on top-level pages and is
 // hidden when drilling into a detail view (e.g. a job) — like a native app
 // where the bar is covered by the pushed screen. The center "Clock" tab is the
 // entry point to the self-service clock-in flow, available to everyone.
+//
+// Ask AI takes the slot Invoices used to hold here; Invoices is still reachable
+// from the slide-out drawer menu.
 
 interface Tab { href: string; label: string; icon: React.ComponentType<{ className?: string }>; perm: string; }
 
 const SIDE_TABS: Tab[] = [
-  { href: "/dashboard", label: "Home",     icon: LayoutDashboard, perm: "dashboard.view" },
-  { href: "/jobs",      label: "Jobs",     icon: Hammer,          perm: "jobs.view" },
-  { href: "/invoices",  label: "Invoices", icon: FileText,        perm: "invoices.view" },
-  { href: "/employees", label: "Team",     icon: Users,           perm: "employees.view" },
+  { href: "/dashboard", label: "Home", icon: LayoutDashboard, perm: "dashboard.view" },
+  { href: "/jobs",      label: "Jobs", icon: Hammer,          perm: "jobs.view" },
+  // Ask AI is injected here (between Jobs and Team) when the user can use it.
+  { href: "/employees", label: "Team", icon: Users,           perm: "employees.view" },
 ];
 
 // Exact routes where the bar is shown. Anything deeper (e.g. /jobs/<id>,
@@ -32,19 +36,46 @@ export function MobileTabBar({
   permissions: PermissionMap;
 }) {
   const pathname = usePathname();
+  const { openPanel, canUse: canUseAi } = useAskAi();
   if (!TOP_LEVEL.has(pathname)) return null;
 
-  const visible = SIDE_TABS.filter((t) => can(isSuperadmin, permissions, t.perm));
-  const half = Math.ceil(visible.length / 2);
-  const left = visible.slice(0, half);
-  const right = visible.slice(half);
+  const navTabs = SIDE_TABS.filter((t) => can(isSuperadmin, permissions, t.perm));
+
+  // Build the ordered list of side items: nav links plus the Ask AI action,
+  // placed before "Team" so it lands where Invoices used to sit.
+  type Item = { kind: "link"; tab: Tab } | { kind: "ai" };
+  const items: Item[] = [];
+  for (const t of navTabs) {
+    if (t.href === "/employees" && canUseAi) items.push({ kind: "ai" });
+    items.push({ kind: "link", tab: t });
+  }
+  if (canUseAi && !items.some((i) => i.kind === "ai")) items.push({ kind: "ai" });
+
+  const half = Math.ceil(items.length / 2);
+  const left = items.slice(0, half);
+  const right = items.slice(half);
   const clockActive = pathname === "/clock";
 
-  const Item = ({ t }: { t: Tab }) => {
+  const renderItem = (item: Item, idx: number) => {
+    if (item.kind === "ai") {
+      return (
+        <button
+          key={`ai-${idx}`}
+          type="button"
+          onClick={openPanel}
+          className="flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-medium text-muted-foreground"
+        >
+          <Sparkles className="h-5 w-5 text-primary" />
+          <span>Ask AI</span>
+        </button>
+      );
+    }
+    const t = item.tab;
     const Icon = t.icon;
     const active = pathname === t.href;
     return (
       <Link
+        key={t.href}
         href={t.href}
         className={cn(
           "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-medium transition-colors",
@@ -59,7 +90,7 @@ export function MobileTabBar({
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t bg-card pb-[env(safe-area-inset-bottom)] md:hidden">
-      {left.map((t) => <Item key={t.href} t={t} />)}
+      {left.map(renderItem)}
 
       {/* Center clock action — raised, always visible */}
       <Link href="/clock" className="flex flex-1 flex-col items-center justify-center gap-0.5 pb-1.5 text-[10px] font-medium">
@@ -74,7 +105,7 @@ export function MobileTabBar({
         <span className={cn(clockActive ? "text-primary" : "text-muted-foreground")}>Clock</span>
       </Link>
 
-      {right.map((t) => <Item key={t.href} t={t} />)}
+      {right.map(renderItem)}
     </nav>
   );
 }

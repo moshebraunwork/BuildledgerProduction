@@ -11,8 +11,9 @@ import { saveTheme } from "@/app/(app)/actions";
 import { NAV } from "@/components/nav-items";
 import {
   HardHat, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, Monitor, Moon, Sun, LogOut, User as UserIcon,
+  ChevronDown, ChevronUp, Monitor, Moon, Sun, LogOut, User as UserIcon, Sparkles,
 } from "lucide-react";
+import { useAskAi } from "@/components/ask-ai/ask-ai-context";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -33,6 +34,7 @@ export function Sidebar({
   const router = useRouter();
   const { setTheme } = useTheme();
   const { signOut } = useClerk();
+  const { openPanel, canUse: canUseAi } = useAskAi();
 
   const [collapsed, setCollapsed] = React.useState(false);
   // Restore collapsed state from localStorage on mount
@@ -179,6 +181,24 @@ export function Sidebar({
           );
         })}
       </nav>
+
+      {/* Ask AI launcher — sits just above the profile */}
+      {canUseAi && (
+        <div className="px-2 pb-1">
+          <button
+            type="button"
+            onClick={openPanel}
+            title={collapsed ? "Ask AI" : undefined}
+            className={cn(
+              "group flex w-full items-center gap-3 rounded-md border border-primary/20 bg-gradient-to-r from-primary/10 to-violet-500/10 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:from-primary/20 hover:to-violet-500/20",
+              collapsed && "justify-center px-2"
+            )}
+          >
+            <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+            {!collapsed && <span className="truncate">Ask AI</span>}
+          </button>
+        </div>
+      )}
 
       {/* Profile area — bottom-left */}
       <div className="border-t p-2">
