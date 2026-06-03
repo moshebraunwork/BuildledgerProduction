@@ -4,7 +4,23 @@ import { sql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { auditUser, diff } from "@/lib/audit";
+import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
+
+// Turns a thrown error into a readable message. Without this, a server-side
+// throw reaches the client as an opaque "An error occurred in the Server
+// Components render" digest, leaving the user with no idea what went wrong.
+function errMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return typeof e === "string" ? e : "Unexpected error";
+}
+
+// A cleared date field arrives as "" from the client; a Postgres `date` column
+// rejects an empty string ("invalid input syntax for type date"). Coerce blanks
+// to null so clearing a job's scheduled date saves instead of erroring.
+function nullableDate(v: string | null | undefined): string | null {
+  return v == null || v === "" ? null : v;
+}
 
 // Columns worth recording a before/after for on a job edit.
 const JOB_AUDIT_FIELDS = [
@@ -24,74 +40,90 @@ const JOB_STATUSES = ["scheduled", "active", "complete"];
 export async function createJob(input: JobInput) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "jobs.edit")) return { error: "Forbidden" };
-  const rows = await sql`
-    insert into public.jobs (company_id, title, place, scheduled_date, customer_name, customer_email, estimate, billing_mode, status)
-    values (${user.companyId}, ${input.title}, ${input.place}, ${input.scheduled_date},
-            ${input.customer_name}, ${input.customer_email}, ${input.estimate}, ${input.billing_mode}, 'scheduled')
-    returning *
-  `;
-  await auditUser(user, {
-    action: "job.create", entity: "job", entityId: rows[0].id,
-    detail: {
-      title: input.title,
-      customer: input.customer_name,
-      estimate: input.estimate,
-      billing_mode: input.billing_mode,
-    },
-  });
-  revalidatePath("/jobs");
-  return { data: rows[0] };
+  try {
+    const rows = await sql`
+      insert into public.jobs (company_id, title, place, scheduled_date, customer_name, customer_email, estimate, billing_mode, status)
+      values (${user.companyId}, ${input.title}, ${input.place}, ${nullableDate(input.scheduled_date)},
+              ${input.customer_name}, ${input.customer_email}, ${input.estimate}, ${input.billing_mode}, 'scheduled')
+      returning *
+    `;
+    await auditUser(user, {
+      action: "job.create", entity: "job", entityId: rows[0].id,
+      detail: {
+        title: input.title,
+        customer: input.customer_name,
+        estimate: input.estimate,
+        billing_mode: input.billing_mode,
+      },
+    });
+    revalidatePath("/jobs");
+    return { data: rows[0] };
+  } catch (e) {
+    logger.error("jobs", "createJob failed", { err: e });
+    return { error: errMessage(e) };
+  }
 }
 
 export async function updateJob(id: string, input: JobInput) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "jobs.edit")) return { error: "Forbidden" };
-  const status = input.status && JOB_STATUSES.includes(input.status) ? input.status : null;
-  // Snapshot before the update so the log can show exactly what changed.
-  const beforeRows = await sql`
-    select title, place, scheduled_date, customer_name, customer_email,
-           estimate, billing_mode, billing_rate, status
-    from public.jobs where id = ${id} and company_id = ${user.companyId} limit 1
-  `;
-  const rows = await sql`
-    update public.jobs set
-      title = ${input.title},
-      place = ${input.place},
-      scheduled_date = ${input.scheduled_date},
-      customer_name = ${input.customer_name},
-      customer_email = ${input.customer_email},
-      estimate = ${input.estimate},
-      billing_mode = ${input.billing_mode},
-      billing_rate = ${input.billing_rate ?? null},
-      status = coalesce(${status}, status),
-      updated_at = now()
-    where id = ${id} and company_id = ${user.companyId}
-    returning *
-  `;
-  await auditUser(user, {
-    action: "job.update", entity: "job", entityId: id,
-    detail: { title: input.title, changes: diff(beforeRows[0], rows[0], JOB_AUDIT_FIELDS) },
-  });
-  revalidatePath("/jobs");
-  return { data: rows[0] };
+  try {
+    const status = input.status && JOB_STATUSES.includes(input.status) ? input.status : null;
+    // Snapshot before the update so the log can show exactly what changed.
+    const beforeRows = await sql`
+      select title, place, scheduled_date, customer_name, customer_email,
+             estimate, billing_mode, billing_rate, status
+      from public.jobs where id = ${id} and company_id = ${user.companyId} limit 1
+    `;
+    const rows = await sql`
+      update public.jobs set
+        title = ${input.title},
+        place = ${input.place},
+        scheduled_date = ${nullableDate(input.scheduled_date)},
+        customer_name = ${input.customer_name},
+        customer_email = ${input.customer_email},
+        estimate = ${input.estimate},
+        billing_mode = ${input.billing_mode},
+        billing_rate = ${input.billing_rate ?? null},
+        status = coalesce(${status}, status),
+        updated_at = now()
+      where id = ${id} and company_id = ${user.companyId}
+      returning *
+    `;
+    if (!rows[0]) return { error: "Job not found" };
+    await auditUser(user, {
+      action: "job.update", entity: "job", entityId: id,
+      detail: { title: input.title, changes: diff(beforeRows[0], rows[0], JOB_AUDIT_FIELDS) },
+    });
+    revalidatePath("/jobs");
+    return { data: rows[0] };
+  } catch (e) {
+    logger.error("jobs", "updateJob failed", { id, err: e });
+    return { error: errMessage(e) };
+  }
 }
 
 export async function deleteJob(id: string) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "jobs.delete")) return { error: "Forbidden" };
-  // Capture identifying fields before the row is gone, so the log is readable.
-  const beforeRows = await sql`
-    select title, customer_name, status from public.jobs where id = ${id} and company_id = ${user.companyId} limit 1
-  `;
-  await sql`delete from public.jobs where id = ${id} and company_id = ${user.companyId}`;
-  await auditUser(user, {
-    action: "job.delete", entity: "job", entityId: id,
-    detail: beforeRows[0]
-      ? { title: beforeRows[0].title, customer: beforeRows[0].customer_name, status: beforeRows[0].status }
-      : undefined,
-  });
-  revalidatePath("/jobs");
-  return { ok: true };
+  try {
+    // Capture identifying fields before the row is gone, so the log is readable.
+    const beforeRows = await sql`
+      select title, customer_name, status from public.jobs where id = ${id} and company_id = ${user.companyId} limit 1
+    `;
+    await sql`delete from public.jobs where id = ${id} and company_id = ${user.companyId}`;
+    await auditUser(user, {
+      action: "job.delete", entity: "job", entityId: id,
+      detail: beforeRows[0]
+        ? { title: beforeRows[0].title, customer: beforeRows[0].customer_name, status: beforeRows[0].status }
+        : undefined,
+    });
+    revalidatePath("/jobs");
+    return { ok: true };
+  } catch (e) {
+    logger.error("jobs", "deleteJob failed", { id, err: e });
+    return { error: errMessage(e) };
+  }
 }
 
 export async function getJobDetail(jobId: string) {
