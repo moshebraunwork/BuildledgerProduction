@@ -17,6 +17,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { EmptyState } from "@/components/empty-state";
 import { MobileCard, MobileField } from "@/components/mobile-card";
 import { fmtMoney, fmtDate } from "@/lib/utils";
+import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { Plus, Search, MoreVertical, CheckCircle, Hammer } from "lucide-react";
 
 interface Job {
@@ -27,7 +28,11 @@ interface Job {
 const statusVariant: Record<string, "secondary" | "default" | "success"> = {
   scheduled: "secondary", active: "default", complete: "success",
 };
-const blank = { title: "", place: "", scheduled_date: "", customer_name: "", customer_email: "", estimate: 0, billing_mode: "itemized" };
+const blank = {
+  title: "", place: "", scheduled_date: "", customer_name: "", customer_email: "",
+  estimate: 0, billing_mode: "itemized",
+  lat: null as number | null, lng: null as number | null,
+};
 
 export function JobsManager({
   initialJobs, canEdit, canDelete,
@@ -60,6 +65,7 @@ export function JobsManager({
       title: form.title.trim(), place: form.place || null, scheduled_date: form.scheduled_date || null,
       customer_name: form.customer_name || null, customer_email: form.customer_email || null,
       estimate: Number(form.estimate), billing_mode: form.billing_mode,
+      lat: form.lat, lng: form.lng,
     });
     if (res.error) return toast({ title: "Create failed", description: res.error, variant: "destructive" });
     setJobs((j) => [res.data as Job, ...j]);
@@ -251,7 +257,13 @@ export function JobsManager({
       >
         <div className="space-y-4">
           <div className="space-y-2"><Label>Title</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="min-h-[44px]" /></div>
-          <div className="space-y-2"><Label>Place / address</Label><Input value={form.place} onChange={(e) => setForm({ ...form, place: e.target.value })} className="min-h-[44px]" /></div>
+          <div className="space-y-2">
+            <Label>Place / address</Label>
+            <AddressAutocomplete
+              value={form.place ? { place: form.place, lat: form.lat, lng: form.lng } : null}
+              onChange={(v) => setForm({ ...form, place: v?.place ?? "", lat: v?.lat ?? null, lng: v?.lng ?? null })}
+            />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2"><Label>Customer name</Label><Input value={form.customer_name} onChange={(e) => setForm({ ...form, customer_name: e.target.value })} className="min-h-[44px]" /></div>
             <div className="space-y-2"><Label>Customer email</Label><Input type="email" value={form.customer_email} onChange={(e) => setForm({ ...form, customer_email: e.target.value })} className="min-h-[44px]" /></div>

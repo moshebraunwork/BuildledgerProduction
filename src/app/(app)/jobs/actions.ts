@@ -33,6 +33,9 @@ interface JobInput {
   customer_name: string | null; customer_email: string | null;
   estimate: number; billing_mode: string; billing_rate?: number | null;
   status?: string;
+  // Coordinates for the address, set when the user picks one from the
+  // autocomplete. Optional so other callers (and old clients) still work.
+  lat?: number | null; lng?: number | null;
 }
 
 const JOB_STATUSES = ["scheduled", "active", "complete"];
@@ -42,9 +45,10 @@ export async function createJob(input: JobInput) {
   if (!user || !can(user.isSuperadmin, user.permissions, "jobs.edit")) return { error: "Forbidden" };
   try {
     const rows = await sql`
-      insert into public.jobs (company_id, title, place, scheduled_date, customer_name, customer_email, estimate, billing_mode, status)
+      insert into public.jobs (company_id, title, place, scheduled_date, customer_name, customer_email, estimate, billing_mode, status, lat, lng)
       values (${user.companyId}, ${input.title}, ${input.place}, ${nullableDate(input.scheduled_date)},
-              ${input.customer_name}, ${input.customer_email}, ${input.estimate}, ${input.billing_mode}, 'scheduled')
+              ${input.customer_name}, ${input.customer_email}, ${input.estimate}, ${input.billing_mode}, 'scheduled',
+              ${input.lat ?? null}, ${input.lng ?? null})
       returning *
     `;
     await auditUser(user, {
@@ -90,6 +94,8 @@ export async function updateJob(id: string, input: JobInput) {
           estimate = ${input.estimate},
           billing_mode = ${input.billing_mode},
           billing_rate = ${input.billing_rate ?? null},
+          lat = ${input.lat ?? null},
+          lng = ${input.lng ?? null},
           status = coalesce(${status}, status),
           updated_at = now()
         where id = ${id} and company_id = ${user.companyId}
@@ -107,6 +113,8 @@ export async function updateJob(id: string, input: JobInput) {
           estimate = ${input.estimate},
           billing_mode = ${input.billing_mode},
           billing_rate = ${input.billing_rate ?? null},
+          lat = ${input.lat ?? null},
+          lng = ${input.lng ?? null},
           status = coalesce(${status}, status)
         where id = ${id} and company_id = ${user.companyId}
         returning *
