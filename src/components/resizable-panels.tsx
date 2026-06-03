@@ -23,6 +23,13 @@ export function ResizablePanels({
   const panels = React.Children.toArray(children).filter(Boolean);
   const n = panels.length;
 
+  // Each separator between panels occupies a fixed width (w-1.5 = 6px plus
+  // mx-1.5 = 12px = 18px). The panel sizes sum to 100%, so without accounting
+  // for the separators the row would be 100% + (n-1)·18px wide and overflow its
+  // container — clipping the last panel. Subtract the separators' total width,
+  // shared evenly, from each panel's flex-basis so everything fits exactly.
+  const SEPARATOR_PX = 18;
+
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [sizes, setSizes] = React.useState<number[]>(() => Array(n).fill(100 / n));
   const [wide, setWide] = React.useState(false);
@@ -119,13 +126,15 @@ export function ResizablePanels({
     document.body.style.userSelect = "none";
   }
 
+  const sepAllowance = wide && n > 1 ? ((n - 1) * SEPARATOR_PX) / n : 0;
+
   return (
     <div ref={containerRef} className={cn("flex flex-col gap-4 lg:flex-row lg:gap-0", className)}>
       {panels.map((panel, i) => (
         <React.Fragment key={i}>
           <div
             className={cn("min-w-0", panelClassName)}
-            style={wide ? { flexBasis: `${sizes[i]}%`, flexGrow: 0, flexShrink: 0 } : undefined}
+            style={wide ? { flexBasis: `calc(${sizes[i]}% - ${sepAllowance}px)`, flexGrow: 0, flexShrink: 0 } : undefined}
           >
             {panel}
           </div>
