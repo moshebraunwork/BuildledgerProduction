@@ -14,6 +14,7 @@ import { can } from "@/lib/permissions";
 import type { CurrentUser } from "@/lib/auth";
 import type { FunctionDeclaration } from "./gemini";
 import { geocode, haversineMiles } from "./geo";
+import { computeBilling } from "@/lib/billing";
 
 interface ToolDef {
   name: string;
@@ -135,7 +136,8 @@ const TOOLS: ToolDef[] = [
       const q = like(args.query);
       const limit = clampLimit(args.limit, 25, 50);
       const rows = await sql`
-        select id::text as id, title, place, customer_name, status, scheduled_date, estimate, billing_mode, created_at
+        select id::text as id, title, place, customer_name, status, scheduled_date, estimate,
+               billing_mode, created_at, completed_at, lat, lng
         from public.jobs
         where company_id = ${user.companyId}
           and (${status}::text is null or status = ${status})
@@ -150,7 +152,7 @@ const TOOLS: ToolDef[] = [
   // --------------------------------------------------------------------------
   {
     name: "get_job_details",
-    description: "Get full detail for one job: crew, items used, one-time costs, invoices, and total logged hours. Provide job_id (preferred) or a title to look up.",
+    description: "Get full detail for one job: crew, items used, one-time costs, invoices, total logged hours, completion date, location, and a breakdown of how its billable amount is composed (labor vs. items vs. costs, plus tax). Provide job_id (preferred) or a title to look up.",
     permission: "jobs.view",
     parameters: {
       type: "object",
@@ -164,7 +166,7 @@ const TOOLS: ToolDef[] = [
       const title = like(args.title);
       const jobRows = await sql`
         select id::text as id, title, place, customer_name, customer_email, status,
-               scheduled_date, estimate, billing_mode, billing_rate, created_at
+               scheduled_date, estimate, billing_mode, billing_rate, created_at, completed_at, lat, lng
         from public.jobs
         where company_id = ${user.companyId}
           and (
@@ -176,14 +178,42 @@ const TOOLS: ToolDef[] = [
       `;
       if (!jobRows.length) return { found: false };
       const job = jobRows[0];
-      const [crew, items, costs, invoices, hours] = await Promise.all([
+      const [crew, items, costs, invoices, punches, companyRows, empRows] = await Promise.all([
         sql`select e.name from public.job_employees je join public.employees e on e.id = je.employee_id where je.job_id = ${job.id}::uuid`,
         sql`select name, qty, charge, excluded from public.job_items where job_id = ${job.id}::uuid`,
         sql`select label, charge, excluded from public.job_costs where job_id = ${job.id}::uuid`,
         sql`select number, status, total, created_at from public.invoices where job_id = ${job.id}::uuid order by created_at desc`,
-        sql`select coalesce(sum(extract(epoch from (coalesce(ended_at, now()) - started_at)) / 3600.0), 0) as hours
-            from public.punches where job_id = ${job.id}::uuid`,
+        sql`select employee_id::text as employee_id, kind, started_at, ended_at from public.punches where job_id = ${job.id}::uuid`,
+        sql`select default_rate, tax_rate from public.companies where id = ${user.companyId} limit 1`,
+        sql`select id::text as id, name from public.employees where company_id = ${user.companyId}`,
       ]);
+
+      // Compute how the billable amount breaks down, the same way an invoice
+      // would — so the AI can explain labor vs. items vs. costs, not just a total.
+      const company = (companyRows as any[])[0] ?? {};
+      const employeeName: Record<string, string> = {};
+      for (const e of empRows as any[]) employeeName[e.id] = e.name;
+      const rate = Number(job.billing_rate ?? company.default_rate ?? 0);
+      const taxRate = Number(company.tax_rate ?? 0);
+      const breakdown = computeBilling({
+        billingMode: job.billing_mode,
+        rate,
+        taxRate,
+        excludeStoreTime: true,
+        items: (items as any[]).map((i) => ({ name: i.name, qty: Number(i.qty), charge: Number(i.charge), excluded: i.excluded })),
+        costs: (costs as any[]).map((c) => ({ label: c.label, charge: Number(c.charge), excluded: c.excluded })),
+        punches: punches as any[],
+        employeeName,
+        nowMs: Date.now(),
+      });
+
+      const totalHours =
+        (punches as any[]).reduce((s, p) => {
+          const start = Date.parse(p.started_at);
+          const end = p.ended_at ? Date.parse(p.ended_at) : Date.now();
+          return s + Math.max(0, (end - start) / 3600000);
+        }, 0);
+
       return {
         found: true,
         job,
@@ -191,7 +221,17 @@ const TOOLS: ToolDef[] = [
         items,
         costs,
         invoices,
-        total_hours: Number((hours as any[])[0]?.hours ?? 0),
+        total_hours: Math.round(totalHours * 100) / 100,
+        // The manual `estimate` field vs. the computed billable breakdown.
+        billing_breakdown: {
+          mode: job.billing_mode,
+          hourly_rate: rate,
+          tax_rate: taxRate,
+          lines: breakdown.lines,
+          subtotal: breakdown.subtotal,
+          tax: breakdown.tax,
+          total: breakdown.total,
+        },
       };
     },
   },
@@ -322,6 +362,44 @@ const TOOLS: ToolDef[] = [
         .map(([employee, hours]) => ({ employee, hours: Math.round(hours * 100) / 100 }))
         .sort((a, b) => b.hours - a.hours);
       return { window_days: days, hours_by_employee: hoursByEmployee, recent_punches: rows };
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  {
+    name: "find_customer",
+    description: "Look up a customer by name and return their contact email and how many jobs and invoices are associated with them. Use for questions about a customer's contact details or history.",
+    permission: "jobs.view",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Customer name (full or partial)." },
+      },
+      required: ["name"],
+    },
+    async run(user, args) {
+      const q = like(args.name);
+      if (!q) return { matches: [] };
+      // Customers aren't a table of their own — they live on jobs and invoices.
+      // Union both so we can surface an email and a sense of their history.
+      const rows = await sql`
+        select customer_name,
+               max(customer_email) as customer_email,
+               count(*) filter (where src = 'job') as jobs,
+               count(*) filter (where src = 'invoice') as invoices
+        from (
+          select customer_name, customer_email, 'job' as src
+            from public.jobs where company_id = ${user.companyId} and customer_name ilike ${q}
+          union all
+          select customer_name, customer_email, 'invoice' as src
+            from public.invoices where company_id = ${user.companyId} and customer_name ilike ${q}
+        ) t
+        where customer_name is not null
+        group by customer_name
+        order by jobs desc, invoices desc
+        limit 10
+      `;
+      return { count: rows.length, customers: rows };
     },
   },
 
