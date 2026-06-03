@@ -38,7 +38,9 @@ export type StreamEvent =
   | { type: "functionCall"; call: FunctionCall };
 
 export function geminiModel(): string {
-  return process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  // Override with GEMINI_MODEL when Google rotates model names (older flash
+  // models get retired periodically and start returning 404).
+  return process.env.GEMINI_MODEL || "gemini-2.5-flash";
 }
 
 export function geminiConfigured(): boolean {
