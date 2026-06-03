@@ -75,21 +75,43 @@ export async function updateJob(id: string, input: JobInput) {
              estimate, billing_mode, billing_rate, status
       from public.jobs where id = ${id} and company_id = ${user.companyId} limit 1
     `;
-    const rows = await sql`
-      update public.jobs set
-        title = ${input.title},
-        place = ${input.place},
-        scheduled_date = ${nullableDate(input.scheduled_date)},
-        customer_name = ${input.customer_name},
-        customer_email = ${input.customer_email},
-        estimate = ${input.estimate},
-        billing_mode = ${input.billing_mode},
-        billing_rate = ${input.billing_rate ?? null},
-        status = coalesce(${status}, status),
-        updated_at = now()
-      where id = ${id} and company_id = ${user.companyId}
-      returning *
-    `;
+    // jobs.updated_at arrives with migration 0005. Set it where it exists, but
+    // fall back to an update without it so a behind-migration database can still
+    // save (nothing reads jobs.updated_at, so the bookkeeping is optional).
+    let rows: any[];
+    try {
+      rows = (await sql`
+        update public.jobs set
+          title = ${input.title},
+          place = ${input.place},
+          scheduled_date = ${nullableDate(input.scheduled_date)},
+          customer_name = ${input.customer_name},
+          customer_email = ${input.customer_email},
+          estimate = ${input.estimate},
+          billing_mode = ${input.billing_mode},
+          billing_rate = ${input.billing_rate ?? null},
+          status = coalesce(${status}, status),
+          updated_at = now()
+        where id = ${id} and company_id = ${user.companyId}
+        returning *
+      `) as any[];
+    } catch (e) {
+      if (!/updated_at/.test(String((e as any)?.message ?? ""))) throw e;
+      rows = (await sql`
+        update public.jobs set
+          title = ${input.title},
+          place = ${input.place},
+          scheduled_date = ${nullableDate(input.scheduled_date)},
+          customer_name = ${input.customer_name},
+          customer_email = ${input.customer_email},
+          estimate = ${input.estimate},
+          billing_mode = ${input.billing_mode},
+          billing_rate = ${input.billing_rate ?? null},
+          status = coalesce(${status}, status)
+        where id = ${id} and company_id = ${user.companyId}
+        returning *
+      `) as any[];
+    }
     if (!rows[0]) return { error: "Job not found" };
     await auditUser(user, {
       action: "job.update", entity: "job", entityId: id,
