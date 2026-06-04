@@ -4,7 +4,7 @@ import * as React from "react";
 import "leaflet/dist/leaflet.css";
 import { useTheme } from "next-themes";
 import { Layers, LocateFixed, Loader2, Briefcase, User } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { getEmployeeLocations } from "@/app/(app)/map/actions";
 
 export interface JobPin {
@@ -32,8 +32,8 @@ const BRIEFCASE_SVG =
 const USER_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
 
-// Light mode keeps the familiar full-colour OpenStreetMap tiles; dark mode uses
-// CARTO's dark basemap so the map matches the app theme. Both are free/keyless.
+// Light mode keeps full-colour OpenStreetMap tiles; dark mode uses CARTO's dark
+// basemap so the map matches the app theme. Both are free/keyless.
 const TILES = {
   light: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
@@ -46,6 +46,9 @@ export function MapView({
   canSeeEmployees,
   onJobClick,
   onEmployeeClick,
+  onJobHover,
+  highlightJobId,
+  panJobId,
   className,
 }: {
   jobs: JobPin[];
@@ -53,18 +56,24 @@ export function MapView({
   canSeeEmployees: boolean;
   onJobClick?: (id: string) => void;
   onEmployeeClick?: (emp: EmpPin) => void;
+  onJobHover?: (id: string | null) => void;
+  highlightJobId?: string | null;
+  panJobId?: string | null;
   className?: string;
 }) {
   const { resolvedTheme } = useTheme();
   const elRef = React.useRef<HTMLDivElement>(null);
   const LRef = React.useRef<any>(null);
   const ctxRef = React.useRef<{ map: any; tile: any; jobs: any; emps: any; me: any } | null>(null);
-  // Latest click handlers, so markers always call the current callback.
+  const jobMarkersRef = React.useRef<Map<string, any>>(new Map());
   const onJobRef = React.useRef(onJobClick);
   const onEmpRef = React.useRef(onEmployeeClick);
+  const onHoverRef = React.useRef(onJobHover);
   onJobRef.current = onJobClick;
   onEmpRef.current = onEmployeeClick;
+  onHoverRef.current = onJobHover;
 
+  const [ready, setReady] = React.useState(false);
   const [employees, setEmployees] = React.useState<EmpPin[]>(initialEmployees);
   const [showJobs, setShowJobs] = React.useState(true);
   const [showEmps, setShowEmps] = React.useState(true);
@@ -74,15 +83,24 @@ export function MapView({
 
   React.useEffect(() => setEmployees(initialEmployees), [initialEmployees]);
 
-  function markerIcon(kind: "job" | "employee") {
+  function jobIcon(highlight: boolean) {
     const L = LRef.current;
-    const bg = kind === "job" ? "#2563eb" : "#16a34a";
-    const glyph = kind === "job" ? BRIEFCASE_SVG : USER_SVG;
+    const size = highlight ? 38 : 30;
+    const ring = highlight ? ";box-shadow:0 0 0 4px rgba(37,99,235,.35),0 1px 4px rgba(0,0,0,.45)" : ";box-shadow:0 1px 4px rgba(0,0,0,.45)";
+    return L.divIcon({
+      className: "",
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+      html: `<div style="width:${size}px;height:${size}px;border-radius:9999px;background:#2563eb;border:2px solid white;display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;transition:all .1s${ring}">${BRIEFCASE_SVG}</div>`,
+    });
+  }
+  function empIcon() {
+    const L = LRef.current;
     return L.divIcon({
       className: "",
       iconSize: [30, 30],
       iconAnchor: [15, 15],
-      html: `<div style="width:30px;height:30px;border-radius:9999px;background:${bg};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer">${glyph}</div>`,
+      html: `<div style="width:30px;height:30px;border-radius:9999px;background:#16a34a;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer">${USER_SVG}</div>`,
     });
   }
   function meIcon() {
@@ -104,16 +122,17 @@ export function MapView({
       const L = mod.default ?? mod;
       if (cancelled || !elRef.current) return;
       LRef.current = L;
-      map = L.map(elRef.current, { scrollWheelZoom: true }).setView([40.7128, -74.006], 9);
+      map = L.map(elRef.current, { scrollWheelZoom: true, zoomControl: true }).setView([40.7128, -74.006], 9);
       const isDark = document.documentElement.classList.contains("dark");
       const tile = L.tileLayer(isDark ? TILES.dark : TILES.light, { attribution: ATTR, maxZoom: 19 }).addTo(map);
       ctxRef.current = { map, tile, jobs: L.layerGroup(), emps: L.layerGroup(), me: L.layerGroup().addTo(map) };
-      drawJobsAndEmps();
+      setReady(true);
     })();
     return () => {
       cancelled = true;
       if (map) map.remove();
       ctxRef.current = null;
+      jobMarkersRef.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -126,28 +145,33 @@ export function MapView({
     ctx.map.removeLayer(ctx.tile);
     ctx.tile = L.tileLayer(resolvedTheme === "dark" ? TILES.dark : TILES.light, { attribution: ATTR, maxZoom: 19 }).addTo(ctx.map);
     ctx.tile.bringToBack();
-  }, [resolvedTheme]);
+  }, [resolvedTheme, ready]);
 
-  const drawJobsAndEmps = React.useCallback(() => {
+  // (Re)draw all markers when data or readiness changes.
+  React.useEffect(() => {
     const ctx = ctxRef.current;
     const L = LRef.current;
-    if (!ctx || !L) return;
+    if (!ctx || !L || !ready) return;
     ctx.jobs.clearLayers();
     ctx.emps.clearLayers();
+    jobMarkersRef.current.clear();
     const pts: [number, number][] = [];
 
     for (const j of jobs) {
       if (!Number.isFinite(+j.lat) || !Number.isFinite(+j.lng)) continue;
-      L.marker([+j.lat, +j.lng], { icon: markerIcon("job") })
+      const m = L.marker([+j.lat, +j.lng], { icon: jobIcon(false) })
         .bindTooltip(`${escapeHtml(j.title)}${j.place ? " — " + escapeHtml(j.place) : ""}`)
         .on("click", () => onJobRef.current?.(j.id))
-        .addTo(ctx.jobs);
+        .on("mouseover", () => onHoverRef.current?.(j.id))
+        .on("mouseout", () => onHoverRef.current?.(null));
+      m.addTo(ctx.jobs);
+      jobMarkersRef.current.set(j.id, m);
       pts.push([+j.lat, +j.lng]);
     }
     for (const e of employees) {
       if (!Number.isFinite(+e.lat) || !Number.isFinite(+e.lng)) continue;
       const when = e.at ? new Date(e.at).toLocaleString() : "unknown time";
-      L.marker([+e.lat, +e.lng], { icon: markerIcon("employee") })
+      L.marker([+e.lat, +e.lng], { icon: empIcon() })
         .bindTooltip(`${escapeHtml(e.name)} — last seen ${escapeHtml(when)}`)
         .on("click", () => onEmpRef.current?.(e))
         .addTo(ctx.emps);
@@ -155,26 +179,23 @@ export function MapView({
     }
     if (pts.length) ctx.map.fitBounds(pts, { padding: [40, 40], maxZoom: 14 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobs, employees]);
+  }, [jobs, employees, ready]);
 
-  React.useEffect(() => {
-    drawJobsAndEmps();
-  }, [drawJobsAndEmps]);
-
-  // Layer visibility toggles.
+  // Layer visibility — depends on `ready` so the layers attach on first load
+  // (previously they only appeared after toggling).
   React.useEffect(() => {
     const ctx = ctxRef.current;
-    if (!ctx) return;
+    if (!ctx || !ready) return;
     if (showJobs) ctx.jobs.addTo(ctx.map);
     else ctx.map.removeLayer(ctx.jobs);
-  }, [showJobs, employees, jobs]);
+  }, [showJobs, ready, jobs, employees]);
 
   React.useEffect(() => {
     const ctx = ctxRef.current;
-    if (!ctx) return;
+    if (!ctx || !ready) return;
     if (showEmps && canSeeEmployees) ctx.emps.addTo(ctx.map);
     else ctx.map.removeLayer(ctx.emps);
-  }, [showEmps, canSeeEmployees, employees, jobs]);
+  }, [showEmps, canSeeEmployees, ready, jobs, employees]);
 
   // My-location marker.
   React.useEffect(() => {
@@ -184,9 +205,31 @@ export function MapView({
     ctx.me.clearLayers();
     if (myLoc) L.marker([myLoc.lat, myLoc.lng], { icon: meIcon() }).bindTooltip("You are here").addTo(ctx.me);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myLoc]);
+  }, [myLoc, ready]);
 
-  // Refresh employee positions periodically.
+  // Highlight a job marker (driven by table hover or map hover).
+  React.useEffect(() => {
+    if (!ready) return;
+    for (const [id, m] of jobMarkersRef.current) {
+      m.setIcon(jobIcon(id === highlightJobId));
+      if (id === highlightJobId) m.setZIndexOffset(1000);
+      else m.setZIndexOffset(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightJobId, ready]);
+
+  // Pan to a job when the table requests it (hovering a table row).
+  React.useEffect(() => {
+    const ctx = ctxRef.current;
+    if (!ctx || !ready || !panJobId) return;
+    const job = jobs.find((j) => j.id === panJobId);
+    if (!job) return;
+    ctx.map.panTo([+job.lat, +job.lng], { animate: true });
+    if (ctx.map.getZoom() < 12) ctx.map.setZoom(13);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panJobId, ready]);
+
+  // Periodic employee refresh.
   React.useEffect(() => {
     if (!canSeeEmployees) return;
     const id = setInterval(async () => {
@@ -211,19 +254,33 @@ export function MapView({
     );
   }
 
+  // `isolate` confines Leaflet's internal z-index stack to this box, so the map
+  // can never paint over page elements like the table's right-click menu.
   return (
-    <div className="flex h-full flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" onClick={locateMe} disabled={locating}>
-          {locating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+    <div className={cn("relative isolate overflow-hidden rounded-lg border", className)}>
+      <div ref={elRef} className="absolute inset-0" />
+
+      {/* Floating controls (top-right) */}
+      <div className="absolute right-2 top-2 z-[600] flex items-center gap-2">
+        <button
+          type="button"
+          onClick={locateMe}
+          disabled={locating}
+          className="flex items-center gap-1.5 rounded-md border bg-background/95 px-2.5 py-1.5 text-xs font-medium shadow-sm backdrop-blur hover:bg-accent disabled:opacity-50"
+        >
+          {locating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="h-3.5 w-3.5" />}
           My location
-        </Button>
+        </button>
         <div className="relative">
-          <Button variant="outline" size="sm" onClick={() => setFilterOpen((o) => !o)}>
-            <Layers className="h-4 w-4" /> Layers
-          </Button>
+          <button
+            type="button"
+            onClick={() => setFilterOpen((o) => !o)}
+            className="flex items-center gap-1.5 rounded-md border bg-background/95 px-2.5 py-1.5 text-xs font-medium shadow-sm backdrop-blur hover:bg-accent"
+          >
+            <Layers className="h-3.5 w-3.5" /> Layers
+          </button>
           {filterOpen && (
-            <div className="absolute left-0 z-[500] mt-1 w-52 rounded-md border bg-popover p-2 shadow-lg">
+            <div className="absolute right-0 z-[700] mt-1 w-48 rounded-md border bg-popover p-2 shadow-lg">
               <label className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent">
                 <span className="flex items-center gap-2"><Briefcase className="h-4 w-4 text-blue-600" /> Jobs ({jobs.length})</span>
                 <input type="checkbox" checked={showJobs} onChange={(e) => setShowJobs(e.target.checked)} />
@@ -237,12 +294,7 @@ export function MapView({
             </div>
           )}
         </div>
-        <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5 text-blue-600" /> Jobs</span>
-          {canSeeEmployees && <span className="flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-green-600" /> Employees</span>}
-        </div>
       </div>
-      <div ref={elRef} className={className ?? "h-[420px] w-full overflow-hidden rounded-lg border"} />
     </div>
   );
 }

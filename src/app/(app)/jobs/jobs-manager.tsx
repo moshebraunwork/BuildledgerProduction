@@ -58,18 +58,54 @@ export function JobsManager({
   const [form, setForm] = React.useState(blank);
   const [q, setQ] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("all");
+  const [sort, setSort] = React.useState("created_desc");
   const [ctx, setCtx] = React.useState<ContextMenuState | null>(null);
   const [toDelete, setToDelete] = React.useState<Job | null>(null);
+  // Shared hover between the table and the map. `source` says which side the
+  // user is hovering so each side reacts (table hover → pan map; map hover →
+  // scroll the row into view) without feedback loops.
+  const [hover, setHover] = React.useState<{ id: string; source: "table" | "map" } | null>(null);
 
   function openJob(job: Job) {
     router.push(`/jobs/${job.id}`);
   }
 
-  const filtered = jobs.filter((j) => {
-    const matchesQ = `${j.title} ${j.customer_name ?? ""} ${j.place ?? ""}`.toLowerCase().includes(q.toLowerCase());
-    const matchesStatus = statusFilter === "all" || j.status === statusFilter;
-    return matchesQ && matchesStatus;
-  });
+  const filtered = React.useMemo(() => {
+    const list = jobs.filter((j) => {
+      const matchesQ = `${j.title} ${j.customer_name ?? ""} ${j.place ?? ""}`.toLowerCase().includes(q.toLowerCase());
+      const matchesStatus = statusFilter === "all" || j.status === statusFilter;
+      return matchesQ && matchesStatus;
+    });
+    const dir = sort.endsWith("_asc") ? 1 : -1;
+    const key = sort.replace(/_(asc|desc)$/, "");
+    const val = (j: Job): string | number => {
+      switch (key) {
+        case "title": return (j.title ?? "").toLowerCase();
+        case "customer": return (j.customer_name ?? "").toLowerCase();
+        case "scheduled": return j.scheduled_date ? Date.parse(j.scheduled_date) : 0;
+        case "estimate": return Number(j.estimate) || 0;
+        case "status": return (j.status ?? "").toLowerCase();
+        default: return 0; // created order = original list order
+      }
+    };
+    if (key !== "created") {
+      list.sort((a, b) => {
+        const av = val(a), bv = val(b);
+        if (av < bv) return -1 * dir;
+        if (av > bv) return 1 * dir;
+        return 0;
+      });
+    } else if (dir === 1) {
+      list.reverse(); // created_asc = oldest first
+    }
+    return list;
+  }, [jobs, q, statusFilter, sort]);
+
+  // When the map is hovered, bring the matching table row into view.
+  React.useEffect(() => {
+    if (hover?.source !== "map") return;
+    document.getElementById(`jobrow-${hover.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [hover]);
 
   async function create() {
     if (!form.title.trim()) return toast({ title: "Title required", variant: "destructive" });
@@ -123,7 +159,7 @@ export function JobsManager({
     <>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {/* Left: jobs list */}
-        <div className={canMap ? "min-w-0 lg:flex-1" : "min-w-0 w-full"}>
+        <div className={canMap ? "min-w-0 lg:w-1/2" : "min-w-0 w-full"}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-56">
@@ -137,6 +173,21 @@ export function JobsManager({
               <SelectItem value="scheduled">Scheduled</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="complete">Complete</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={sort} onValueChange={setSort}>
+            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="created_desc">Newest first</SelectItem>
+              <SelectItem value="created_asc">Oldest first</SelectItem>
+              <SelectItem value="title_asc">Title (A–Z)</SelectItem>
+              <SelectItem value="title_desc">Title (Z–A)</SelectItem>
+              <SelectItem value="customer_asc">Customer (A–Z)</SelectItem>
+              <SelectItem value="scheduled_asc">Scheduled (earliest)</SelectItem>
+              <SelectItem value="scheduled_desc">Scheduled (latest)</SelectItem>
+              <SelectItem value="estimate_desc">Estimate (high–low)</SelectItem>
+              <SelectItem value="estimate_asc">Estimate (low–high)</SelectItem>
+              <SelectItem value="status_asc">Status</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -158,9 +209,12 @@ export function JobsManager({
                 {filtered.map((j) => (
                   <TableRow
                     key={j.id}
-                    className="cursor-pointer"
+                    id={`jobrow-${j.id}`}
+                    className={`cursor-pointer transition-colors ${hover?.id === j.id ? "bg-primary/10" : ""}`}
                     onClick={() => openJob(j)}
                     onContextMenu={(e) => rowMenu(e, j)}
+                    onMouseEnter={() => canMap && j.lat != null && setHover({ id: j.id, source: "table" })}
+                    onMouseLeave={() => setHover((h) => (h?.source === "table" ? null : h))}
                   >
                     <TableCell>
                       <div className="font-medium">{j.title}</div>
@@ -252,14 +306,20 @@ export function JobsManager({
 
         {/* Right: map of jobs (and employees, if permitted) */}
         {canMap && (
-          <div className="lg:w-[44%] lg:shrink-0">
+          <div className="lg:sticky lg:top-4 lg:w-1/2">
             <MapView
               jobs={jobPins}
               initialEmployees={employeePins}
               canSeeEmployees={canSeeEmployees}
               onJobClick={(id) => router.push(`/jobs/${id}`)}
               onEmployeeClick={(emp) => { if (emp.employee_id) router.push(`/employees?employee=${emp.employee_id}`); }}
-              className="h-[60vh] w-full overflow-hidden rounded-lg border lg:h-[calc(100vh-11rem)]"
+              onJobHover={(id) => {
+                if (id) setHover({ id, source: "map" });
+                else setHover((h) => (h?.source === "map" ? null : h));
+              }}
+              highlightJobId={hover?.id ?? null}
+              panJobId={hover?.source === "table" ? hover.id : null}
+              className="h-[60vh] w-full lg:h-[calc(100vh-9rem)]"
             />
           </div>
         )}
