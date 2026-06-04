@@ -18,11 +18,13 @@ import { EmptyState } from "@/components/empty-state";
 import { MobileCard, MobileField } from "@/components/mobile-card";
 import { fmtMoney, fmtDate } from "@/lib/utils";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
+import { MapView, type JobPin, type EmpPin } from "@/app/(app)/map/map-view";
 import { Plus, Search, MoreVertical, CheckCircle, Hammer } from "lucide-react";
 
 interface Job {
   id: string; title: string; place: string | null; scheduled_date: string | null;
   customer_name: string | null; status: string; estimate: number; billing_mode: string;
+  lat: number | null; lng: number | null;
 }
 
 const statusVariant: Record<string, "secondary" | "default" | "success"> = {
@@ -35,13 +37,23 @@ const blank = {
 };
 
 export function JobsManager({
-  initialJobs, canEdit, canDelete,
+  initialJobs, canEdit, canDelete, canMap = false, canSeeEmployees = false, employeePins = [],
 }: {
   initialJobs: Job[]; canEdit: boolean; canDelete?: boolean;
+  canMap?: boolean; canSeeEmployees?: boolean; employeePins?: EmpPin[];
 }) {
   const { toast } = useToast();
   const router = useRouter();
   const [jobs, setJobs] = React.useState<Job[]>(initialJobs);
+
+  // Job markers for the embedded map — every job that has coordinates.
+  const jobPins = React.useMemo<JobPin[]>(
+    () =>
+      jobs
+        .filter((j) => j.lat != null && j.lng != null)
+        .map((j) => ({ id: j.id, title: j.title, place: j.place, status: j.status, lat: Number(j.lat), lng: Number(j.lng) })),
+    [jobs]
+  );
   const [createOpen, setCreateOpen] = React.useState(false);
   const [form, setForm] = React.useState(blank);
   const [q, setQ] = React.useState("");
@@ -109,6 +121,9 @@ export function JobsManager({
 
   return (
     <>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        {/* Left: jobs list */}
+        <div className={canMap ? "min-w-0 lg:flex-1" : "min-w-0 w-full"}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-56">
@@ -231,6 +246,22 @@ export function JobsManager({
               ? <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New job</Button>
               : undefined}
           />
+        )}
+      </div>
+        </div>
+
+        {/* Right: map of jobs (and employees, if permitted) */}
+        {canMap && (
+          <div className="lg:w-[44%] lg:shrink-0">
+            <MapView
+              jobs={jobPins}
+              initialEmployees={employeePins}
+              canSeeEmployees={canSeeEmployees}
+              onJobClick={(id) => router.push(`/jobs/${id}`)}
+              onEmployeeClick={(emp) => { if (emp.employee_id) router.push(`/employees?employee=${emp.employee_id}`); }}
+              className="h-[60vh] w-full overflow-hidden rounded-lg border lg:h-[calc(100vh-11rem)]"
+            />
+          </div>
         )}
       </div>
 

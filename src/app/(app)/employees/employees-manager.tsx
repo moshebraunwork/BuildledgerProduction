@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,6 +89,19 @@ export function EmployeesManager({
     });
     setOpen(true);
   }
+
+  // Open a specific employee's detail when arrived at via ?employee=<id>
+  // (e.g. clicking an employee pin on the Jobs map).
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  React.useEffect(() => {
+    const id = searchParams.get("employee");
+    if (!id) return;
+    const emp = employees.find((e) => e.id === id);
+    if (emp) startEdit(emp);
+    router.replace("/employees");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   async function save() {
     if (!form.name.trim()) return toast({ title: "Name required", variant: "destructive" });

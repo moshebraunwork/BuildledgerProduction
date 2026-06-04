@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 import {
   LayoutDashboard, Hammer, Boxes, Users, Settings as SettingsIcon,
-  ScrollText, Shield, FileText, UserCog, MapPin,
+  ScrollText, Shield, FileText, UserCog,
 } from "lucide-react";
 
 export interface NavItem {
@@ -29,5 +29,4 @@ export const NAV: NavItem[] = [
   { href: "/invoices",  label: "Invoices",  icon: FileText, perm: "invoices.view" },
   { href: "/inventory", label: "Inventory", icon: Boxes,    perm: "inventory.view" },
   { href: "/employees", label: "Employees", icon: Users,    perm: "employees.view" },
-  { href: "/map",       label: "Map",       icon: MapPin,   perm: "map.view" },
 ];

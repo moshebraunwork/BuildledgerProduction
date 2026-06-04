@@ -205,7 +205,7 @@ export function AskAiPanel({
   return (
     <div
       className={cn(
-        "fixed inset-0 z-[70] transition-opacity duration-300",
+        "fixed inset-0 z-[1100] transition-opacity duration-300",
         open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
       )}
       aria-hidden={!open}

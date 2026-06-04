@@ -27,6 +27,7 @@ export async function reportLocation(loc: { lat: number; lng: number; accuracy?:
 }
 
 export interface EmployeeLocation {
+  employee_id: string | null;
   name: string;
   lat: number;
   lng: number;
@@ -40,7 +41,8 @@ export async function getEmployeeLocations(): Promise<{ employees: EmployeeLocat
   if (!user || !can(user.isSuperadmin, user.permissions, "map.employees")) return { error: "Forbidden" };
   try {
     const rows = await sql`
-      select coalesce(e.name, u.full_name, u.email) as name,
+      select e.id::text as employee_id,
+             coalesce(e.name, u.full_name, u.email) as name,
              u.last_lat as lat, u.last_lng as lng, u.last_location_at as at
       from public.users u
       left join public.employees e on (e.user_id = u.id or e.clerk_user_id = u.clerk_user_id)
