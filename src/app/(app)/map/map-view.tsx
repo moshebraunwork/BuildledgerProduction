@@ -32,12 +32,8 @@ const BRIEFCASE_SVG =
 const USER_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
 
-// Job marker colour mirrors the status badge colours.
-const STATUS_COLOR: Record<string, string> = {
-  scheduled: "#f59e0b", // amber
-  active: "#2563eb", // blue
-  complete: "#16a34a", // green
-};
+const STATUS_COLOR: Record<string, string> = { scheduled: "#f59e0b", active: "#2563eb", complete: "#16a34a" };
+const EMP_COLOR = "#7c3aed";
 const ALL_STATUSES = ["scheduled", "active", "complete"] as const;
 const STATUS_LABEL: Record<string, string> = { scheduled: "Scheduled", active: "Active", complete: "Complete" };
 
@@ -53,10 +49,14 @@ export function MapView({
   canSeeEmployees,
   onJobClick,
   onJobContext,
-  onEmployeeClick,
   onJobHover,
   highlightJobId,
   panJobId,
+  onEmployeeClick,
+  onEmpContext,
+  onEmpHover,
+  highlightEmpId,
+  panEmpId,
   className,
 }: {
   jobs: JobPin[];
@@ -64,10 +64,14 @@ export function MapView({
   canSeeEmployees: boolean;
   onJobClick?: (id: string) => void;
   onJobContext?: (id: string, x: number, y: number) => void;
-  onEmployeeClick?: (emp: EmpPin) => void;
   onJobHover?: (id: string | null) => void;
   highlightJobId?: string | null;
   panJobId?: string | null;
+  onEmployeeClick?: (emp: EmpPin) => void;
+  onEmpContext?: (employeeId: string, x: number, y: number) => void;
+  onEmpHover?: (employeeId: string | null) => void;
+  highlightEmpId?: string | null;
+  panEmpId?: string | null;
   className?: string;
 }) {
   const { resolvedTheme } = useTheme();
@@ -75,18 +79,17 @@ export function MapView({
   const LRef = React.useRef<any>(null);
   const ctxRef = React.useRef<{ map: any; tile: any; jobs: any; emps: any; me: any } | null>(null);
   const jobMarkersRef = React.useRef<Map<string, any>>(new Map());
-  const onJobRef = React.useRef(onJobClick);
-  const onCtxRef = React.useRef(onJobContext);
-  const onEmpRef = React.useRef(onEmployeeClick);
-  const onHoverRef = React.useRef(onJobHover);
-  onJobRef.current = onJobClick;
-  onCtxRef.current = onJobContext;
-  onEmpRef.current = onEmployeeClick;
-  onHoverRef.current = onJobHover;
+  const empMarkersRef = React.useRef<Map<string, any>>(new Map());
+
+  const refs = {
+    job: React.useRef(onJobClick), jobCtx: React.useRef(onJobContext), jobHover: React.useRef(onJobHover),
+    emp: React.useRef(onEmployeeClick), empCtx: React.useRef(onEmpContext), empHover: React.useRef(onEmpHover),
+  };
+  refs.job.current = onJobClick; refs.jobCtx.current = onJobContext; refs.jobHover.current = onJobHover;
+  refs.emp.current = onEmployeeClick; refs.empCtx.current = onEmpContext; refs.empHover.current = onEmpHover;
 
   const [ready, setReady] = React.useState(false);
   const [employees, setEmployees] = React.useState<EmpPin[]>(initialEmployees);
-  // Completed jobs are hidden by default.
   const [statusOn, setStatusOn] = React.useState<Record<string, boolean>>({ scheduled: true, active: true, complete: false });
   const [showEmps, setShowEmps] = React.useState(true);
   const [filterOpen, setFilterOpen] = React.useState(false);
@@ -95,27 +98,19 @@ export function MapView({
 
   React.useEffect(() => setEmployees(initialEmployees), [initialEmployees]);
 
-  function jobIcon(status: string, highlight: boolean) {
+  function circleIcon(bg: string, glyph: string, highlight: boolean) {
     const L = LRef.current;
     const size = highlight ? 38 : 30;
-    const bg = STATUS_COLOR[status] ?? "#2563eb";
     const ring = highlight ? `;box-shadow:0 0 0 4px ${bg}59,0 1px 4px rgba(0,0,0,.45)` : ";box-shadow:0 1px 4px rgba(0,0,0,.45)";
     return L.divIcon({
       className: "",
       iconSize: [size, size],
       iconAnchor: [size / 2, size / 2],
-      html: `<div style="width:${size}px;height:${size}px;border-radius:9999px;background:${bg};border:2px solid white;display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;transition:all .1s${ring}">${BRIEFCASE_SVG}</div>`,
+      html: `<div style="width:${size}px;height:${size}px;border-radius:9999px;background:${bg};border:2px solid white;display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;transition:all .1s${ring}">${glyph}</div>`,
     });
   }
-  function empIcon() {
-    const L = LRef.current;
-    return L.divIcon({
-      className: "",
-      iconSize: [30, 30],
-      iconAnchor: [15, 15],
-      html: `<div style="width:30px;height:30px;border-radius:9999px;background:#7c3aed;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer">${USER_SVG}</div>`,
-    });
-  }
+  const jobIcon = (status: string, hi: boolean) => circleIcon(STATUS_COLOR[status] ?? "#2563eb", BRIEFCASE_SVG, hi);
+  const empIcon = (hi: boolean) => circleIcon(EMP_COLOR, USER_SVG, hi);
   function meIcon() {
     const L = LRef.current;
     return L.divIcon({
@@ -134,7 +129,6 @@ export function MapView({
       const L = mod.default ?? mod;
       if (cancelled || !elRef.current) return;
       LRef.current = L;
-      // Custom controls replace the default zoom buttons.
       map = L.map(elRef.current, { scrollWheelZoom: true, zoomControl: false }).setView([40.7128, -74.006], 9);
       const isDark = document.documentElement.classList.contains("dark");
       const tile = L.tileLayer(isDark ? TILES.dark : TILES.light, { attribution: ATTR, maxZoom: 19 }).addTo(map);
@@ -146,6 +140,7 @@ export function MapView({
       if (map) map.remove();
       ctxRef.current = null;
       jobMarkersRef.current.clear();
+      empMarkersRef.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -159,7 +154,7 @@ export function MapView({
     ctx.tile.bringToBack();
   }, [resolvedTheme, ready]);
 
-  // (Re)draw markers. Jobs are filtered by the per-status layer toggles.
+  // (Re)draw all markers.
   React.useEffect(() => {
     const ctx = ctxRef.current;
     const L = LRef.current;
@@ -167,6 +162,7 @@ export function MapView({
     ctx.jobs.clearLayers();
     ctx.emps.clearLayers();
     jobMarkersRef.current.clear();
+    empMarkersRef.current.clear();
     const pts: [number, number][] = [];
 
     for (const j of jobs) {
@@ -174,13 +170,10 @@ export function MapView({
       if (!Number.isFinite(+j.lat) || !Number.isFinite(+j.lng)) continue;
       const m = L.marker([+j.lat, +j.lng], { icon: jobIcon(j.status, false) })
         .bindTooltip(`${escapeHtml(j.title)}${j.place ? " — " + escapeHtml(j.place) : ""}`)
-        .on("click", () => onJobRef.current?.(j.id))
-        .on("contextmenu", (ev: any) => {
-          ev.originalEvent?.preventDefault?.();
-          onCtxRef.current?.(j.id, ev.originalEvent?.clientX ?? 0, ev.originalEvent?.clientY ?? 0);
-        })
-        .on("mouseover", () => onHoverRef.current?.(j.id))
-        .on("mouseout", () => onHoverRef.current?.(null));
+        .on("click", () => refs.job.current?.(j.id))
+        .on("contextmenu", (ev: any) => { ev.originalEvent?.preventDefault?.(); refs.jobCtx.current?.(j.id, ev.originalEvent?.clientX ?? 0, ev.originalEvent?.clientY ?? 0); })
+        .on("mouseover", () => refs.jobHover.current?.(j.id))
+        .on("mouseout", () => refs.jobHover.current?.(null));
       m.addTo(ctx.jobs);
       jobMarkersRef.current.set(j.id, m);
       pts.push([+j.lat, +j.lng]);
@@ -188,10 +181,14 @@ export function MapView({
     for (const e of employees) {
       if (!Number.isFinite(+e.lat) || !Number.isFinite(+e.lng)) continue;
       const when = e.at ? new Date(e.at).toLocaleString() : "unknown time";
-      L.marker([+e.lat, +e.lng], { icon: empIcon() })
+      const m = L.marker([+e.lat, +e.lng], { icon: empIcon(false) })
         .bindTooltip(`${escapeHtml(e.name)} — last seen ${escapeHtml(when)}`)
-        .on("click", () => onEmpRef.current?.(e))
-        .addTo(ctx.emps);
+        .on("click", () => refs.emp.current?.(e))
+        .on("contextmenu", (ev: any) => { ev.originalEvent?.preventDefault?.(); if (e.employee_id) refs.empCtx.current?.(e.employee_id, ev.originalEvent?.clientX ?? 0, ev.originalEvent?.clientY ?? 0); })
+        .on("mouseover", () => { if (e.employee_id) refs.empHover.current?.(e.employee_id); })
+        .on("mouseout", () => refs.empHover.current?.(null));
+      m.addTo(ctx.emps);
+      if (e.employee_id) empMarkersRef.current.set(e.employee_id, m);
       pts.push([+e.lat, +e.lng]);
     }
     if (pts.length) ctx.map.fitBounds(pts, { padding: [40, 40], maxZoom: 14 });
@@ -201,7 +198,7 @@ export function MapView({
   React.useEffect(() => {
     const ctx = ctxRef.current;
     if (!ctx || !ready) return;
-    ctx.jobs.addTo(ctx.map); // jobs layer always attached; status toggles control contents
+    ctx.jobs.addTo(ctx.map);
   }, [ready]);
 
   React.useEffect(() => {
@@ -220,28 +217,34 @@ export function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myLoc, ready]);
 
-  // Highlight a job marker (table or map hover).
+  // Highlight markers (jobs + employees).
   React.useEffect(() => {
     if (!ready) return;
-    const job = (id: string) => jobs.find((j) => j.id === id);
     for (const [id, m] of jobMarkersRef.current) {
-      const j = job(id);
+      const j = jobs.find((x) => x.id === id);
       if (!j) continue;
       m.setIcon(jobIcon(j.status, id === highlightJobId));
       m.setZIndexOffset(id === highlightJobId ? 1000 : 0);
     }
+    for (const [id, m] of empMarkersRef.current) {
+      m.setIcon(empIcon(id === highlightEmpId));
+      m.setZIndexOffset(id === highlightEmpId ? 1000 : 0);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [highlightJobId, ready]);
+  }, [highlightJobId, highlightEmpId, ready]);
 
+  // Pan to a job/employee on request (table hover).
   React.useEffect(() => {
     const ctx = ctxRef.current;
-    if (!ctx || !ready || !panJobId) return;
-    const job = jobs.find((j) => j.id === panJobId);
-    if (!job) return;
-    ctx.map.panTo([+job.lat, +job.lng], { animate: true });
+    if (!ctx || !ready) return;
+    const j = panJobId ? jobs.find((x) => x.id === panJobId) : null;
+    const e = panEmpId ? employees.find((x) => x.employee_id === panEmpId) : null;
+    const target = j ? [+j.lat, +j.lng] : e ? [+e.lat, +e.lng] : null;
+    if (!target) return;
+    ctx.map.panTo(target as [number, number], { animate: true });
     if (ctx.map.getZoom() < 12) ctx.map.setZoom(13);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panJobId, ready]);
+  }, [panJobId, panEmpId, ready]);
 
   React.useEffect(() => {
     if (!canSeeEmployees) return;
@@ -274,7 +277,6 @@ export function MapView({
     <div className={cn("relative isolate overflow-hidden rounded-lg border", className)}>
       <div ref={elRef} className="absolute inset-0" />
 
-      {/* Floating icon controls (top-right), all matching style + grouped */}
       <div className="absolute right-2 top-2 z-[600] flex items-center gap-1">
         <button type="button" className={ctlBtn} title="Zoom in" onClick={() => ctxRef.current?.map.zoomIn()}><Plus className="h-4 w-4" /></button>
         <button type="button" className={ctlBtn} title="Zoom out" onClick={() => ctxRef.current?.map.zoomOut()}><Minus className="h-4 w-4" /></button>
@@ -285,20 +287,22 @@ export function MapView({
           <button type="button" className={ctlBtn} title="Layers & filters" onClick={() => setFilterOpen((o) => !o)}><Layers className="h-4 w-4" /></button>
           {filterOpen && (
             <div className="absolute right-0 z-[700] mt-1 w-52 rounded-md border bg-popover p-2 text-sm shadow-lg">
-              <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Jobs by status</p>
-              {ALL_STATUSES.map((s) => (
-                <label key={s} className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-accent">
-                  <span className="flex items-center gap-2">
-                    <span className="inline-block h-3 w-3 rounded-full" style={{ background: STATUS_COLOR[s] }} /> {STATUS_LABEL[s]}
-                  </span>
-                  <input type="checkbox" checked={!!statusOn[s]} onChange={(e) => setStatusOn((m) => ({ ...m, [s]: e.target.checked }))} />
-                </label>
-              ))}
+              {jobs.length > 0 && (
+                <>
+                  <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Jobs by status</p>
+                  {ALL_STATUSES.map((s) => (
+                    <label key={s} className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-accent">
+                      <span className="flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-full" style={{ background: STATUS_COLOR[s] }} /> {STATUS_LABEL[s]}</span>
+                      <input type="checkbox" checked={!!statusOn[s]} onChange={(e) => setStatusOn((m) => ({ ...m, [s]: e.target.checked }))} />
+                    </label>
+                  ))}
+                </>
+              )}
               {canSeeEmployees && (
                 <>
                   <p className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">People</p>
                   <label className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-accent">
-                    <span className="flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-full bg-[#7c3aed]" /> Employees ({employees.length})</span>
+                    <span className="flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-full" style={{ background: EMP_COLOR }} /> Employees ({employees.length})</span>
                     <input type="checkbox" checked={showEmps} onChange={(e) => setShowEmps(e.target.checked)} />
                   </label>
                 </>

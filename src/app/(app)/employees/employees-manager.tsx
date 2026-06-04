@@ -13,7 +13,9 @@ import { SlideOver } from "@/components/slide-over";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney } from "@/lib/utils";
-import { Plus, Camera, Mail, Send, CheckCircle2, Search, ArrowUpDown, ArrowUp, ArrowDown, Users, MoreVertical } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { MapView, type EmpPin } from "@/app/(app)/map/map-view";
+import { Plus, Camera, Mail, CheckCircle2, Search, Users, MoreVertical, SlidersHorizontal, Check } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { MobileCard, MobileField } from "@/components/mobile-card";
 import { createEmployee, updateEmployee, deleteEmployee, inviteEmployee, resendInvite } from "./actions";
@@ -24,60 +26,80 @@ interface Employee {
   invite_email: string | null; invite_status: string | null;
 }
 
-type SortKey = "name" | "role_title" | "pay_rate";
-type SortDir = "asc" | "desc";
-
 const blank = {
   name: "", role_title: "", phone: "", pay_rate: 0, require_punch_photo: false,
   doInvite: false, invite_email: "",
 };
 
+const SORT_OPTIONS: { v: string; l: string }[] = [
+  { v: "name_asc", l: "Name (A–Z)" },
+  { v: "name_desc", l: "Name (Z–A)" },
+  { v: "role_asc", l: "Role (A–Z)" },
+  { v: "pay_desc", l: "Pay rate (high–low)" },
+  { v: "pay_asc", l: "Pay rate (low–high)" },
+];
+const STATUS_FILTERS: { v: string; l: string }[] = [
+  { v: "all", l: "All" }, { v: "accepted", l: "Active user" }, { v: "pending", l: "Invite pending" }, { v: "none", l: "No access" },
+];
+
 export function EmployeesManager({
-  initialEmployees, canEdit, canDelete,
+  initialEmployees, canEdit, canDelete, canMap = false, locationPins = [],
 }: {
   initialEmployees: Employee[]; canEdit: boolean; canDelete: boolean;
+  canMap?: boolean; locationPins?: EmpPin[];
 }) {
   const { toast } = useToast();
+  const router = useRouter();
   const [employees, setEmployees] = React.useState<Employee[]>(initialEmployees);
   const [q, setQ] = React.useState("");
-  const [sortKey, setSortKey] = React.useState<SortKey>("name");
-  const [sortDir, setSortDir] = React.useState<SortDir>("asc");
+  const [sort, setSort] = React.useState("name_asc");
+  const [statusFilter, setStatusFilter] = React.useState("all");
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Employee | null>(null);
   const [form, setForm] = React.useState<typeof blank>(blank);
   const [ctx, setCtx] = React.useState<ContextMenuState | null>(null);
   const [toDelete, setToDelete] = React.useState<Employee | null>(null);
+  const [hover, setHover] = React.useState<{ id: string; source: "table" | "map" } | null>(null);
 
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir("asc"); }
-  }
-
-  function SortIcon({ col }: { col: SortKey }) {
-    if (sortKey !== col) return <ArrowUpDown className="ml-1 h-3.5 w-3.5 inline opacity-40" />;
-    return sortDir === "asc"
-      ? <ArrowUp className="ml-1 h-3.5 w-3.5 inline" />
-      : <ArrowDown className="ml-1 h-3.5 w-3.5 inline" />;
-  }
+  // Filter/sort popover.
+  const [fsOpen, setFsOpen] = React.useState(false);
+  const fsRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!fsOpen) return;
+    const onDoc = (e: MouseEvent) => { if (fsRef.current && !fsRef.current.contains(e.target as Node)) setFsOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [fsOpen]);
+  const activeFilters = (statusFilter !== "all" ? 1 : 0) + (sort !== "name_asc" ? 1 : 0);
 
   const filtered = React.useMemo(() => {
     const q2 = q.toLowerCase();
-    const list = employees.filter((e) =>
-      e.name.toLowerCase().includes(q2) ||
-      (e.role_title ?? "").toLowerCase().includes(q2) ||
-      (e.phone ?? "").toLowerCase().includes(q2)
-    );
+    const list = employees.filter((e) => {
+      const matchesQ =
+        e.name.toLowerCase().includes(q2) ||
+        (e.role_title ?? "").toLowerCase().includes(q2) ||
+        (e.phone ?? "").toLowerCase().includes(q2);
+      const isAccepted = e.invite_status === "accepted";
+      const isPending = e.invite_status === "pending";
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "accepted" && isAccepted) ||
+        (statusFilter === "pending" && isPending) ||
+        (statusFilter === "none" && !isAccepted && !isPending);
+      return matchesQ && matchesStatus;
+    });
+    const dir = sort.endsWith("_asc") ? 1 : -1;
+    const key = sort.replace(/_(asc|desc)$/, "");
+    const val = (e: Employee): string | number =>
+      key === "pay" ? Number(e.pay_rate) || 0 : key === "role" ? (e.role_title ?? "").toLowerCase() : e.name.toLowerCase();
     list.sort((a, b) => {
-      let av: string | number = (a[sortKey] ?? "") as string | number;
-      let bv: string | number = (b[sortKey] ?? "") as string | number;
-      if (typeof av === "string") av = av.toLowerCase();
-      if (typeof bv === "string") bv = bv.toLowerCase();
-      if (av < bv) return sortDir === "asc" ? -1 : 1;
-      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      const av = val(a), bv = val(b);
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
       return 0;
     });
     return list;
-  }, [employees, q, sortKey, sortDir]);
+  }, [employees, q, sort, statusFilter]);
 
   function startNew() { setEditing(null); setForm(blank); setOpen(true); }
   function startEdit(w: Employee) {
@@ -90,9 +112,7 @@ export function EmployeesManager({
     setOpen(true);
   }
 
-  // Open a specific employee's detail when arrived at via ?employee=<id>
-  // (e.g. clicking an employee pin on the Jobs map).
-  const router = useRouter();
+  // Open a specific employee's detail when arrived at via ?employee=<id>.
   const searchParams = useSearchParams();
   React.useEffect(() => {
     const id = searchParams.get("employee");
@@ -102,6 +122,12 @@ export function EmployeesManager({
     router.replace("/employees");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // Bring the matching table row into view when hovering the map.
+  React.useEffect(() => {
+    if (hover?.source !== "map") return;
+    document.getElementById(`emprow-${hover.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [hover]);
 
   async function save() {
     if (!form.name.trim()) return toast({ title: "Name required", variant: "destructive" });
@@ -146,13 +172,16 @@ export function EmployeesManager({
     toast({ title: "Employee removed" });
   }
 
-  function rowMenu(e: React.MouseEvent, emp: Employee) {
-    e.preventDefault();
+  function openEmpMenu(emp: Employee, x: number, y: number) {
     const actions = [
       { label: "View / edit", icon: "edit" as const, onClick: () => startEdit(emp) },
     ];
     if (canDelete) actions.push({ label: "Delete", icon: "delete" as any, onClick: () => setToDelete(emp), destructive: true } as any);
-    setCtx({ x: e.clientX, y: e.clientY, actions });
+    setCtx({ x, y, actions });
+  }
+  function rowMenu(e: React.MouseEvent, emp: Employee) {
+    e.preventDefault();
+    openEmpMenu(emp, e.clientX, e.clientY);
   }
 
   function inviteBadge(emp: Employee) {
@@ -163,103 +192,169 @@ export function EmployeesManager({
     return <span className="text-sm text-muted-foreground">—</span>;
   }
 
-  const thClass = "cursor-pointer select-none hover:text-foreground whitespace-nowrap";
-
   return (
     <>
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <div className="relative w-64">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-8" placeholder="Search employees…" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
+      <PageHeader title="Employees" description="Your crew, pay rates, punch settings, and live locations.">
         {canEdit && <Button onClick={startNew}><Plus className="h-4 w-4" /> Add employee</Button>}
-      </div>
+      </PageHeader>
 
-      <Card className="hidden md:block">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className={thClass} onClick={() => toggleSort("name")}>Name <SortIcon col="name" /></TableHead>
-                <TableHead className={thClass} onClick={() => toggleSort("role_title")}>Role <SortIcon col="role_title" /></TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead className={thClass} onClick={() => toggleSort("pay_rate")}>Pay rate <SortIcon col="pay_rate" /></TableHead>
-                <TableHead>Photo</TableHead>
-                <TableHead>System access</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((w) => (
-                <TableRow
-                  key={w.id}
-                  className="cursor-pointer"
-                  onClick={() => startEdit(w)}
-                  onContextMenu={(e) => rowMenu(e, w)}
-                >
-                  <TableCell className="font-medium">{w.name}</TableCell>
-                  <TableCell className="text-sm">{w.role_title ?? "—"}</TableCell>
-                  <TableCell className="text-sm">{w.phone ?? "—"}</TableCell>
-                  <TableCell>{fmtMoney(w.pay_rate)}/hr</TableCell>
-                  <TableCell>
-                    {w.require_punch_photo ? <Badge variant="secondary" className="gap-1"><Camera className="h-3 w-3" /> Yes</Badge> : <span className="text-sm text-muted-foreground">No</span>}
-                  </TableCell>
-                  <TableCell>{inviteBadge(w)}</TableCell>
-                </TableRow>
-              ))}
-              {filtered.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="p-0">
-                    <EmptyState
-                      icon={Users}
-                      title={q ? "No matching employees" : "No employees yet"}
-                      description={q ? "Try a different search term." : "Add your crew to assign them to jobs and track their hours."}
-                      action={canEdit && !q ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add employee</Button> : undefined}
-                    />
-                  </TableCell>
-                </TableRow>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        {/* Left: employees list */}
+        <div className={canMap ? "min-w-0 lg:w-1/2" : "min-w-0 w-full"}>
+          <div className="mb-4 flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className="pl-8" placeholder="Search employees…" value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
+            <div className="relative" ref={fsRef}>
+              <Button variant="outline" size="icon" onClick={() => setFsOpen((o) => !o)} title="Filter & sort" className="relative">
+                <SlidersHorizontal className="h-4 w-4" />
+                {activeFilters > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">{activeFilters}</span>}
+              </Button>
+              {fsOpen && (
+                <div className="absolute right-0 z-40 mt-1 w-64 rounded-md border bg-popover p-3 shadow-lg">
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">System access</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {STATUS_FILTERS.map((s) => (
+                      <button
+                        key={s.v}
+                        type="button"
+                        onClick={() => setStatusFilter(s.v)}
+                        className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${statusFilter === s.v ? "border-primary bg-primary/10 text-primary" : "hover:bg-accent"}`}
+                      >
+                        {s.l}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mb-1.5 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sort by</p>
+                  <div className="space-y-0.5">
+                    {SORT_OPTIONS.map((o) => (
+                      <button
+                        key={o.v}
+                        type="button"
+                        onClick={() => setSort(o.v)}
+                        className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-accent ${sort === o.v ? "font-medium text-primary" : ""}`}
+                      >
+                        {o.l}
+                        {sort === o.v && <Check className="h-4 w-4" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+            </div>
+          </div>
 
-      {/* Mobile: card list */}
-      <div className="space-y-2 md:hidden">
-        {filtered.map((w) => (
-          <MobileCard key={w.id} onClick={() => startEdit(w)}>
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="truncate font-medium">{w.name}</div>
-                <div className="truncate text-xs text-muted-foreground">{w.role_title ?? "Crew"}</div>
-              </div>
-              <div className="shrink-0">{inviteBadge(w)}</div>
-            </div>
-            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-              <MobileField label="Pay">{fmtMoney(w.pay_rate)}/hr</MobileField>
-              <MobileField label="Phone">{w.phone ?? "—"}</MobileField>
-            </div>
-            {w.require_punch_photo && (
-              <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><Camera className="h-3 w-3" /> Punch photo required</div>
+          <Card className="hidden md:block">
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Pay rate</TableHead>
+                    <TableHead>Photo</TableHead>
+                    <TableHead>System access</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((w) => (
+                    <TableRow
+                      key={w.id}
+                      id={`emprow-${w.id}`}
+                      className={`cursor-pointer transition-colors ${hover?.id === w.id ? "bg-primary/10" : ""}`}
+                      onClick={() => startEdit(w)}
+                      onContextMenu={(e) => rowMenu(e, w)}
+                      onMouseEnter={() => canMap && setHover({ id: w.id, source: "table" })}
+                      onMouseLeave={() => setHover((h) => (h?.source === "table" ? null : h))}
+                    >
+                      <TableCell className="font-medium">{w.name}</TableCell>
+                      <TableCell className="text-sm">{w.role_title ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{w.phone ?? "—"}</TableCell>
+                      <TableCell>{fmtMoney(w.pay_rate)}/hr</TableCell>
+                      <TableCell>
+                        {w.require_punch_photo ? <Badge variant="secondary" className="gap-1"><Camera className="h-3 w-3" /> Yes</Badge> : <span className="text-sm text-muted-foreground">No</span>}
+                      </TableCell>
+                      <TableCell>{inviteBadge(w)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="p-0">
+                        <EmptyState
+                          icon={Users}
+                          title={q || statusFilter !== "all" ? "No matching employees" : "No employees yet"}
+                          description={q || statusFilter !== "all" ? "Try a different search or filter." : "Add your crew to assign them to jobs and track their hours."}
+                          action={canEdit && !q && statusFilter === "all" ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add employee</Button> : undefined}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          {/* Mobile: card list */}
+          <div className="space-y-2 md:hidden">
+            {filtered.map((w) => (
+              <MobileCard key={w.id} onClick={() => startEdit(w)}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{w.name}</div>
+                    <div className="truncate text-xs text-muted-foreground">{w.role_title ?? "Crew"}</div>
+                  </div>
+                  <div className="shrink-0">{inviteBadge(w)}</div>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <MobileField label="Pay">{fmtMoney(w.pay_rate)}/hr</MobileField>
+                  <MobileField label="Phone">{w.phone ?? "—"}</MobileField>
+                </div>
+                {w.require_punch_photo && (
+                  <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><Camera className="h-3 w-3" /> Punch photo required</div>
+                )}
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    className="rounded p-1.5 hover:bg-accent"
+                    onClick={(e) => { e.stopPropagation(); rowMenu(e, w); }}
+                    aria-label="More options"
+                  >
+                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                </div>
+              </MobileCard>
+            ))}
+            {filtered.length === 0 && (
+              <EmptyState
+                icon={Users}
+                title={q || statusFilter !== "all" ? "No matching employees" : "No employees yet"}
+                description={q || statusFilter !== "all" ? "Try a different search or filter." : "Add your crew to assign them to jobs and track their hours."}
+                action={canEdit && !q && statusFilter === "all" ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add employee</Button> : undefined}
+              />
             )}
-            <div className="mt-2 flex justify-end">
-              <button
-                type="button"
-                className="rounded p-1.5 hover:bg-accent"
-                onClick={(e) => { e.stopPropagation(); rowMenu(e, w); }}
-                aria-label="More options"
-              >
-                <MoreVertical className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </div>
-          </MobileCard>
-        ))}
-        {filtered.length === 0 && (
-          <EmptyState
-            icon={Users}
-            title={q ? "No matching employees" : "No employees yet"}
-            description={q ? "Try a different search term." : "Add your crew to assign them to jobs and track their hours."}
-            action={canEdit && !q ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add employee</Button> : undefined}
-          />
+          </div>
+        </div>
+
+        {/* Right: map of employee locations */}
+        {canMap && (
+          <div className="lg:sticky lg:top-4 lg:w-1/2">
+            <MapView
+              jobs={[]}
+              initialEmployees={locationPins}
+              canSeeEmployees
+              onEmployeeClick={(emp) => { const w = emp.employee_id ? employees.find((x) => x.id === emp.employee_id) : null; if (w) startEdit(w); }}
+              onEmpContext={(id, x, y) => { const w = employees.find((x) => x.id === id); if (w) openEmpMenu(w, x, y); }}
+              onEmpHover={(id) => {
+                if (id) setHover({ id, source: "map" });
+                else setHover((h) => (h?.source === "map" ? null : h));
+              }}
+              highlightEmpId={hover?.id ?? null}
+              panEmpId={hover?.source === "table" ? hover.id : null}
+              className="h-[60vh] w-full lg:h-[calc(100vh-9rem)]"
+            />
+          </div>
         )}
       </div>
 
@@ -295,7 +390,6 @@ export function EmployeesManager({
             <Switch checked={form.require_punch_photo} onCheckedChange={(v) => setForm({ ...form, require_punch_photo: v })} />
           </div>
 
-          {/* Add as user section (new employee) */}
           {!editing && (
             <div className="space-y-3 rounded-md border p-3">
               <div className="flex items-center justify-between">
@@ -317,7 +411,6 @@ export function EmployeesManager({
             </div>
           )}
 
-          {/* Existing employee invite management */}
           {editing && (
             <div className="space-y-3 rounded-md border p-3">
               <div className="text-sm font-medium">System access</div>
