@@ -1,7 +1,6 @@
 import { requirePermission } from "@/lib/guard";
 import { sql } from "@/lib/db";
 import { can } from "@/lib/permissions";
-import { PageHeader } from "@/components/page-header";
 import { JobsManager } from "./jobs-manager";
 import type { EmpPin } from "@/app/(app)/map/map-view";
 
@@ -37,16 +36,13 @@ export default async function JobsPage() {
   }
 
   return (
-    <>
-      <PageHeader title="Jobs" description="All jobs, scheduling, status, and locations." />
-      <JobsManager
-        initialJobs={jobs as any[]}
-        canEdit={c("jobs.edit")}
-        canDelete={c("jobs.delete")}
-        canMap={canMap}
-        canSeeEmployees={canSeeEmployees}
-        employeePins={employeePins}
-      />
-    </>
+    <JobsManager
+      initialJobs={jobs as any[]}
+      canEdit={c("jobs.edit")}
+      canDelete={c("jobs.delete")}
+      canMap={canMap}
+      canSeeEmployees={canSeeEmployees}
+      employeePins={employeePins}
+    />
   );
 }

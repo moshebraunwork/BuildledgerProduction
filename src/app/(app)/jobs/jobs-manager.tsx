@@ -19,7 +19,8 @@ import { MobileCard, MobileField } from "@/components/mobile-card";
 import { fmtMoney, fmtDate } from "@/lib/utils";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { MapView, type JobPin, type EmpPin } from "@/app/(app)/map/map-view";
-import { Plus, Search, MoreVertical, CheckCircle, Hammer } from "lucide-react";
+import { Plus, Search, MoreVertical, CheckCircle, Hammer, SlidersHorizontal, Check } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 
 interface Job {
   id: string; title: string; place: string | null; scheduled_date: string | null;
@@ -30,6 +31,21 @@ interface Job {
 const statusVariant: Record<string, "secondary" | "default" | "success"> = {
   scheduled: "secondary", active: "default", complete: "success",
 };
+const SORT_OPTIONS: { v: string; l: string }[] = [
+  { v: "created_desc", l: "Newest first" },
+  { v: "created_asc", l: "Oldest first" },
+  { v: "title_asc", l: "Title (A–Z)" },
+  { v: "title_desc", l: "Title (Z–A)" },
+  { v: "customer_asc", l: "Customer (A–Z)" },
+  { v: "scheduled_asc", l: "Scheduled (earliest)" },
+  { v: "scheduled_desc", l: "Scheduled (latest)" },
+  { v: "estimate_desc", l: "Estimate (high–low)" },
+  { v: "estimate_asc", l: "Estimate (low–high)" },
+  { v: "status_asc", l: "Status" },
+];
+const STATUS_FILTERS: { v: string; l: string }[] = [
+  { v: "all", l: "All" }, { v: "scheduled", l: "Scheduled" }, { v: "active", l: "Active" }, { v: "complete", l: "Complete" },
+];
 const blank = {
   title: "", place: "", scheduled_date: "", customer_name: "", customer_email: "",
   estimate: 0, billing_mode: "itemized",
@@ -65,6 +81,15 @@ export function JobsManager({
   // user is hovering so each side reacts (table hover → pan map; map hover →
   // scroll the row into view) without feedback loops.
   const [hover, setHover] = React.useState<{ id: string; source: "table" | "map" } | null>(null);
+  const [fsOpen, setFsOpen] = React.useState(false);
+  const fsRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!fsOpen) return;
+    const onDoc = (e: MouseEvent) => { if (fsRef.current && !fsRef.current.contains(e.target as Node)) setFsOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [fsOpen]);
+  const activeFilters = (statusFilter !== "all" ? 1 : 0) + (sort !== "created_desc" ? 1 : 0);
 
   function openJob(job: Job) {
     router.push(`/jobs/${job.id}`);
@@ -132,8 +157,7 @@ export function JobsManager({
     toast({ title: "Job deleted" });
   }
 
-  function rowMenu(e: React.MouseEvent, job: Job) {
-    e.preventDefault();
+  function openJobMenu(job: Job, x: number, y: number) {
     const actions: ContextMenuState["actions"] = [
       { label: "View", icon: "view", onClick: () => openJob(job) },
       { label: "Edit", icon: "edit", onClick: () => openJob(job) },
@@ -152,46 +176,65 @@ export function JobsManager({
     if (canDelete) {
       actions.push({ label: "Delete", icon: "delete", onClick: () => setToDelete(job), destructive: true });
     }
-    setCtx({ x: e.clientX, y: e.clientY, actions });
+    setCtx({ x, y, actions });
+  }
+
+  function rowMenu(e: React.MouseEvent, job: Job) {
+    e.preventDefault();
+    openJobMenu(job, e.clientX, e.clientY);
   }
 
   return (
     <>
+      <PageHeader title="Jobs" description="All jobs, scheduling, status, and locations.">
+        {canEdit && <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New job</Button>}
+      </PageHeader>
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {/* Left: jobs list */}
         <div className={canMap ? "min-w-0 lg:w-1/2" : "min-w-0 w-full"}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative w-56">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input className="pl-8" placeholder="Search jobs…" value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="scheduled">Scheduled</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="complete">Complete</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={sort} onValueChange={setSort}>
-            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="created_desc">Newest first</SelectItem>
-              <SelectItem value="created_asc">Oldest first</SelectItem>
-              <SelectItem value="title_asc">Title (A–Z)</SelectItem>
-              <SelectItem value="title_desc">Title (Z–A)</SelectItem>
-              <SelectItem value="customer_asc">Customer (A–Z)</SelectItem>
-              <SelectItem value="scheduled_asc">Scheduled (earliest)</SelectItem>
-              <SelectItem value="scheduled_desc">Scheduled (latest)</SelectItem>
-              <SelectItem value="estimate_desc">Estimate (high–low)</SelectItem>
-              <SelectItem value="estimate_asc">Estimate (low–high)</SelectItem>
-              <SelectItem value="status_asc">Status</SelectItem>
-            </SelectContent>
-          </Select>
+      <div className="mb-4 flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input className="pl-8" placeholder="Search jobs…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        {canEdit && <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New job</Button>}
+        <div className="relative" ref={fsRef}>
+          <Button variant="outline" size="icon" onClick={() => setFsOpen((o) => !o)} title="Filter & sort" className="relative">
+            <SlidersHorizontal className="h-4 w-4" />
+            {activeFilters > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">{activeFilters}</span>}
+          </Button>
+          {fsOpen && (
+            <div className="absolute right-0 z-40 mt-1 w-64 rounded-md border bg-popover p-3 shadow-lg">
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
+              <div className="flex flex-wrap gap-1.5">
+                {STATUS_FILTERS.map((s) => (
+                  <button
+                    key={s.v}
+                    type="button"
+                    onClick={() => setStatusFilter(s.v)}
+                    className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${statusFilter === s.v ? "border-primary bg-primary/10 text-primary" : "hover:bg-accent"}`}
+                  >
+                    {s.l}
+                  </button>
+                ))}
+              </div>
+              <p className="mb-1.5 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sort by</p>
+              <div className="space-y-0.5">
+                {SORT_OPTIONS.map((o) => (
+                  <button
+                    key={o.v}
+                    type="button"
+                    onClick={() => setSort(o.v)}
+                    className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-accent ${sort === o.v ? "font-medium text-primary" : ""}`}
+                  >
+                    {o.l}
+                    {sort === o.v && <Check className="h-4 w-4" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <Card className="hidden md:block">
@@ -312,6 +355,7 @@ export function JobsManager({
               initialEmployees={employeePins}
               canSeeEmployees={canSeeEmployees}
               onJobClick={(id) => router.push(`/jobs/${id}`)}
+              onJobContext={(id, x, y) => { const job = jobs.find((j) => j.id === id); if (job) openJobMenu(job, x, y); }}
               onEmployeeClick={(emp) => { if (emp.employee_id) router.push(`/employees?employee=${emp.employee_id}`); }}
               onJobHover={(id) => {
                 if (id) setHover({ id, source: "map" });
