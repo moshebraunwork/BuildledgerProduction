@@ -14,29 +14,50 @@ function grantedPerms(permissions: PermissionMap): string[] {
     .sort();
 }
 
-export async function createRole(name: string, permissions: PermissionMap) {
+export async function createRole(name: string, permissions: PermissionMap, requireLocation = false) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "admin.roles")) return { error: "Forbidden" };
-  const rows = await sql`
-    insert into public.roles (company_id, name, permissions, is_system)
-    values (${user.companyId}, ${name}, ${JSON.stringify(permissions)}::jsonb, false)
-    returning *
-  `;
+  const json = JSON.stringify(permissions);
+  // require_location arrives with migration 0014; fall back if not yet applied.
+  let rows: any[];
+  try {
+    rows = (await sql`
+      insert into public.roles (company_id, name, permissions, is_system, require_location)
+      values (${user.companyId}, ${name}, ${json}::jsonb, false, ${requireLocation})
+      returning *
+    `) as any[];
+  } catch (e) {
+    if (!/require_location/.test(String((e as any)?.message ?? ""))) throw e;
+    rows = (await sql`
+      insert into public.roles (company_id, name, permissions, is_system)
+      values (${user.companyId}, ${name}, ${json}::jsonb, false)
+      returning *
+    `) as any[];
+  }
   await auditUser(user, {
     action: "role.create", entity: "role", entityId: rows[0].id,
-    detail: { name, permissions: grantedPerms(permissions) },
+    detail: { name, permissions: grantedPerms(permissions), requireLocation },
   });
   return { data: rows[0] };
 }
 
-export async function updateRole(id: string, name: string, permissions: PermissionMap) {
+export async function updateRole(id: string, name: string, permissions: PermissionMap, requireLocation = false) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "admin.roles")) return { error: "Forbidden" };
   const beforeRows = await sql`select name, permissions from public.roles where id = ${id} and company_id = ${user.companyId} limit 1`;
-  await sql`
-    update public.roles set name = ${name}, permissions = ${JSON.stringify(permissions)}::jsonb
-    where id = ${id} and company_id = ${user.companyId}
-  `;
+  const json = JSON.stringify(permissions);
+  try {
+    await sql`
+      update public.roles set name = ${name}, permissions = ${json}::jsonb, require_location = ${requireLocation}
+      where id = ${id} and company_id = ${user.companyId}
+    `;
+  } catch (e) {
+    if (!/require_location/.test(String((e as any)?.message ?? ""))) throw e;
+    await sql`
+      update public.roles set name = ${name}, permissions = ${json}::jsonb
+      where id = ${id} and company_id = ${user.companyId}
+    `;
+  }
   const before = beforeRows[0]?.permissions ? grantedPerms(beforeRows[0].permissions as PermissionMap) : [];
   const after = grantedPerms(permissions);
   await auditUser(user, {

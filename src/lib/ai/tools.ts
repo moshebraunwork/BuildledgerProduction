@@ -66,6 +66,7 @@ const TOOLS: ToolDef[] = [
         "inventory.view": "inventory",
         "employees.view": "employees",
         "punches.view": "time clock",
+        "map.employees": "employee locations (map)",
       };
       for (const [perm, label] of Object.entries(map)) {
         if (can(user.isSuperadmin, user.permissions, perm)) areas.push(label);
@@ -400,6 +401,34 @@ const TOOLS: ToolDef[] = [
         limit 10
       `;
       return { count: rows.length, customers: rows };
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  {
+    name: "list_employee_locations",
+    description: "List employees' most recent known locations (from the live map tracking), with how long ago each was updated. Use for 'where is <person>' or 'who is near <place>' questions — combine with geocode_place to compare against an address.",
+    permission: "map.employees",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Optional: only this person (full or partial name)." },
+      },
+    },
+    async run(user, args) {
+      const q = like(args.name);
+      const rows = await sql`
+        select coalesce(e.name, u.full_name, u.email) as name,
+               u.last_lat as lat, u.last_lng as lng, u.last_location_at as updated_at
+        from public.users u
+        left join public.employees e on (e.user_id = u.id or e.clerk_user_id = u.clerk_user_id)
+        where u.company_id = ${user.companyId}
+          and u.last_lat is not null and u.last_lng is not null
+          and (${q}::text is null or coalesce(e.name, u.full_name, u.email) ilike ${q})
+        order by u.last_location_at desc nulls last
+        limit 100
+      `;
+      return { count: rows.length, employees: rows };
     },
   },
 

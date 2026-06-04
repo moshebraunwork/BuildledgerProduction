@@ -14,6 +14,7 @@ function userWith(perms: Record<string, boolean>, isSuperadmin = false): Current
     isActive: true,
     theme: "system",
     permissions: perms,
+    requireLocation: false,
   };
 }
 
@@ -27,6 +28,11 @@ describe("toolsForUser", () => {
   it("gates find_nearby_jobs behind jobs.view", () => {
     expect(toolsForUser(userWith({})).map((t) => t.name)).not.toContain("find_nearby_jobs");
     expect(toolsForUser(userWith({ "jobs.view": true })).map((t) => t.name)).toContain("find_nearby_jobs");
+  });
+
+  it("gates employee locations behind map.employees", () => {
+    expect(toolsForUser(userWith({ "jobs.view": true })).map((t) => t.name)).not.toContain("list_employee_locations");
+    expect(toolsForUser(userWith({ "map.employees": true })).map((t) => t.name)).toContain("list_employee_locations");
   });
 
   it("only exposes data tools the user is permitted to use", () => {

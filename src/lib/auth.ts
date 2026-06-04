@@ -16,6 +16,7 @@ export interface CurrentUser {
   isActive: boolean;
   theme: string;
   permissions: PermissionMap;
+  requireLocation: boolean;
 }
 
 // Ensures a profile row exists in Neon for the signed-in Clerk user.
@@ -102,6 +103,19 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   if (!rows.length) return null;
   const p = rows[0];
 
+  // Whether this user's role requires sharing location (added in migration 0014).
+  // Queried separately + guarded so a database that hasn't run 0014 yet still
+  // authenticates normally.
+  let requireLocation = false;
+  if (p.role_id) {
+    try {
+      const rl = await sql`select require_location from public.roles where id = ${p.role_id} limit 1`;
+      requireLocation = !!rl[0]?.require_location;
+    } catch {
+      /* column not present yet — treat as not required */
+    }
+  }
+
   return {
     id: p.id,
     clerkUserId: p.clerk_user_id,
@@ -113,6 +127,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     isActive: p.is_active,
     theme: p.theme ?? "system",
     permissions: (p.role_permissions as PermissionMap) ?? {},
+    requireLocation,
   };
 }
 

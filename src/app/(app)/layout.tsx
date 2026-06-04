@@ -7,6 +7,7 @@ import { MobileNav } from "@/components/mobile-nav";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ApplyTheme } from "@/components/apply-theme";
 import { AskAiProvider } from "@/components/ask-ai/ask-ai-context";
+import { LocationTracker } from "@/components/location/location-tracker";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -84,6 +85,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     >
       <div className="flex h-screen overflow-hidden">
         <ApplyTheme theme={user.theme} />
+        {/* Location-required roles are tracked + gated here (superadmin exempt). */}
+        <LocationTracker required={user.requireLocation && !user.isSuperadmin} />
         <Sidebar
           isSuperadmin={user.isSuperadmin}
           permissions={user.permissions}

@@ -7,14 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { SlideOver } from "@/components/slide-over";
 import { DeleteConfirm } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
-import { Plus, Pencil, Trash2, Lock } from "lucide-react";
+import { Plus, Pencil, Trash2, Lock, MapPin } from "lucide-react";
 import { createRole, updateRole, deleteRole } from "./actions";
 
-interface Role { id: string; name: string; permissions: PermissionMap; is_system: boolean; }
+interface Role { id: string; name: string; permissions: PermissionMap; is_system: boolean; require_location?: boolean; }
 
 export function RolesManager({ initialRoles }: { initialRoles: Role[] }) {
   const { toast } = useToast();
@@ -23,11 +24,12 @@ export function RolesManager({ initialRoles }: { initialRoles: Role[] }) {
   const [editing, setEditing] = React.useState<Role | null>(null);
   const [name, setName] = React.useState("");
   const [perms, setPerms] = React.useState<PermissionMap>({});
+  const [requireLocation, setRequireLocation] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [toDelete, setToDelete] = React.useState<Role | null>(null);
 
-  function startNew() { setEditing(null); setName(""); setPerms({}); setOpen(true); }
-  function startEdit(r: Role) { setEditing(r); setName(r.name); setPerms({ ...r.permissions }); setOpen(true); }
+  function startNew() { setEditing(null); setName(""); setPerms({}); setRequireLocation(false); setOpen(true); }
+  function startEdit(r: Role) { setEditing(r); setName(r.name); setPerms({ ...r.permissions }); setRequireLocation(!!r.require_location); setOpen(true); }
   function toggle(key: string) { setPerms((p) => ({ ...p, [key]: !p[key] })); }
 
   // Quick helper: toggle all perms in a module group at once
@@ -40,13 +42,13 @@ export function RolesManager({ initialRoles }: { initialRoles: Role[] }) {
     setSaving(true);
     const clean: PermissionMap = Object.fromEntries(Object.entries(perms).filter(([, v]) => v));
     if (editing) {
-      const res = await updateRole(editing.id, name.trim(), clean);
+      const res = await updateRole(editing.id, name.trim(), clean, requireLocation);
       setSaving(false);
       if (res.error) return toast({ title: "Save failed", description: res.error, variant: "destructive" });
-      setRoles((rs) => rs.map((r) => (r.id === editing.id ? { ...r, name: name.trim(), permissions: clean } : r)));
+      setRoles((rs) => rs.map((r) => (r.id === editing.id ? { ...r, name: name.trim(), permissions: clean, require_location: requireLocation } : r)));
       toast({ title: "Role updated" });
     } else {
-      const res = await createRole(name.trim(), clean);
+      const res = await createRole(name.trim(), clean, requireLocation);
       setSaving(false);
       if (res.error) return toast({ title: "Create failed", description: res.error, variant: "destructive" });
       setRoles((rs) => [...rs, res.data as Role]);
@@ -142,6 +144,22 @@ export function RolesManager({ initialRoles }: { initialRoles: Role[] }) {
                 </div>
               );
             })}
+          </div>
+
+          {/* Location requirement — a role behavior, not a permission. */}
+          <div className="rounded-md border p-3">
+            <label className="flex cursor-pointer items-start justify-between gap-3">
+              <span className="flex items-start gap-2">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <span>
+                  <span className="block text-sm font-medium">Require location to use the app</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Members must allow location access; they're tracked and shown on the map.
+                  </span>
+                </span>
+              </span>
+              <Switch checked={requireLocation} onCheckedChange={setRequireLocation} />
+            </label>
           </div>
         </div>
       </SlideOver>
