@@ -9,26 +9,35 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SlideOver } from "@/components/slide-over";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { MapView, type EmpPin } from "@/app/(app)/map/map-view";
-import { Plus, Camera, Mail, CheckCircle2, Search, Users, MoreVertical, SlidersHorizontal, Check } from "lucide-react";
+import { Plus, Camera, Mail, CheckCircle2, Search, Users, MoreVertical, SlidersHorizontal, Check, Shield } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { MobileCard, MobileField } from "@/components/mobile-card";
-import { createEmployee, updateEmployee, deleteEmployee, inviteEmployee, resendInvite } from "./actions";
+import { createEmployee, updateEmployee, deleteEmployee, inviteEmployee, setEmployeeAccess } from "./actions";
 
 interface Employee {
   id: string; name: string; role_title: string | null; phone: string | null;
   pay_rate: number; require_punch_photo: boolean;
   invite_email: string | null; invite_status: string | null;
+  // Linked login account (joined server-side).
+  account_id: string | null;
+  account_role_id: string | null;
+  account_active: boolean | null;
+  account_email: string | null;
+  account_superadmin: boolean | null;
+  account_signed_up: boolean | null;
 }
+interface Role { id: string; name: string; }
 
 const blank = {
   name: "", role_title: "", phone: "", pay_rate: 0, require_punch_photo: false,
-  doInvite: false, invite_email: "",
+  doInvite: false, invite_email: "", access_role_id: "", access_active: false,
 };
 
 const SORT_OPTIONS: { v: string; l: string }[] = [
@@ -43,9 +52,10 @@ const STATUS_FILTERS: { v: string; l: string }[] = [
 ];
 
 export function EmployeesManager({
-  initialEmployees, canEdit, canDelete, canMap = false, locationPins = [],
+  initialEmployees, canEdit, canDelete, canManageAccess = false, roles = [], canMap = false, locationPins = [],
 }: {
   initialEmployees: Employee[]; canEdit: boolean; canDelete: boolean;
+  canManageAccess?: boolean; roles?: Role[];
   canMap?: boolean; locationPins?: EmpPin[];
 }) {
   const { toast } = useToast();
@@ -61,7 +71,12 @@ export function EmployeesManager({
   const [toDelete, setToDelete] = React.useState<Employee | null>(null);
   const [hover, setHover] = React.useState<{ id: string; source: "table" | "map" } | null>(null);
 
-  // Filter/sort popover.
+  const roleName = React.useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const r of roles) m[r.id] = r.name;
+    return (id: string | null | undefined) => (id ? m[id] ?? "Role" : null);
+  }, [roles]);
+
   const [fsOpen, setFsOpen] = React.useState(false);
   const fsRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
@@ -79,8 +94,8 @@ export function EmployeesManager({
         e.name.toLowerCase().includes(q2) ||
         (e.role_title ?? "").toLowerCase().includes(q2) ||
         (e.phone ?? "").toLowerCase().includes(q2);
-      const isAccepted = e.invite_status === "accepted";
-      const isPending = e.invite_status === "pending";
+      const isAccepted = e.invite_status === "accepted" || !!e.account_active;
+      const isPending = e.invite_status === "pending" || (!!e.account_id && !e.account_active && !e.account_signed_up);
       const matchesStatus =
         statusFilter === "all" ||
         (statusFilter === "accepted" && isAccepted) ||
@@ -107,12 +122,14 @@ export function EmployeesManager({
     setForm({
       name: w.name, role_title: w.role_title ?? "", phone: w.phone ?? "",
       pay_rate: w.pay_rate, require_punch_photo: w.require_punch_photo,
-      doInvite: false, invite_email: w.invite_email ?? "",
+      doInvite: false,
+      invite_email: w.account_email ?? w.invite_email ?? "",
+      access_role_id: w.account_role_id ?? "",
+      access_active: !!w.account_active,
     });
     setOpen(true);
   }
 
-  // Open a specific employee's detail when arrived at via ?employee=<id>.
   const searchParams = useSearchParams();
   React.useEffect(() => {
     const id = searchParams.get("employee");
@@ -123,7 +140,6 @@ export function EmployeesManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // Bring the matching table row into view when hovering the map.
   React.useEffect(() => {
     if (hover?.source !== "map") return;
     document.getElementById(`emprow-${hover.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -138,12 +154,23 @@ export function EmployeesManager({
     if (editing) {
       const res = await updateEmployee(editing.id, payload);
       if (res.error) return toast({ title: "Save failed", description: res.error, variant: "destructive" });
-      setEmployees((ws) => ws.map((x) => (x.id === editing.id ? { ...x, ...payload } : x)));
+      let next: Employee = { ...editing, ...payload };
+      // Persist app-access changes for an existing linked account.
+      if (canManageAccess && editing.account_id && !editing.account_superadmin) {
+        const accRes = await setEmployeeAccess(editing.id, { roleId: form.access_role_id || null, active: form.access_active });
+        if ((accRes as any).error) {
+          toast({ title: "Access not saved", description: (accRes as any).error, variant: "destructive" });
+        } else {
+          next = { ...next, account_role_id: form.access_role_id || null, account_active: form.access_active };
+        }
+      }
+      setEmployees((ws) => ws.map((x) => (x.id === editing.id ? next : x)));
       toast({ title: "Employee updated" });
     } else {
       const res = await createEmployee({
         ...payload,
         invite_email: form.doInvite && form.invite_email ? form.invite_email.trim() : null,
+        invite_role_id: form.doInvite ? (form.access_role_id || null) : null,
       });
       if (res.error) return toast({ title: "Create failed", description: res.error, variant: "destructive" });
       setEmployees((ws) => [...ws, res.data as Employee]);
@@ -152,16 +179,15 @@ export function EmployeesManager({
     setOpen(false);
   }
 
-  async function sendInvite(emp: Employee, email: string) {
-    const res = await inviteEmployee(emp.id, email);
-    if (res.error) return toast({ title: "Invite failed", description: res.error, variant: "destructive" });
-    setEmployees((ws) => ws.map((x) => (x.id === emp.id ? { ...x, invite_email: email, invite_status: "pending" } : x)));
+  // Invite an existing employee who has no account yet (from the editor).
+  async function inviteExisting() {
+    if (!editing || !form.invite_email) return;
+    const res = await inviteEmployee(editing.id, form.invite_email.trim(), form.access_role_id || null);
+    if ((res as any).error) return toast({ title: "Invite failed", description: (res as any).error, variant: "destructive" });
+    const email = form.invite_email.trim();
+    setEmployees((ws) => ws.map((x) => (x.id === editing.id ? { ...x, invite_email: email, invite_status: "pending" } : x)));
+    setEditing((e) => (e ? { ...e, invite_email: email, invite_status: "pending" } : e));
     toast({ title: "Invitation sent" });
-  }
-  async function doResend(emp: Employee) {
-    const res = await resendInvite(emp.id);
-    if (res.error) return toast({ title: "Resend failed", description: res.error, variant: "destructive" });
-    toast({ title: "Invitation resent" });
   }
 
   async function confirmDelete() {
@@ -184,27 +210,41 @@ export function EmployeesManager({
     openEmpMenu(emp, e.clientX, e.clientY);
   }
 
-  function inviteBadge(emp: Employee) {
-    if (emp.invite_status === "accepted")
-      return <Badge variant="success" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Active user</Badge>;
-    if (emp.invite_status === "pending")
+  function accessBadge(w: Employee) {
+    if (w.account_superadmin)
+      return <Badge className="gap-1"><Shield className="h-3 w-3" /> Superadmin</Badge>;
+    if (w.account_active)
+      return <Badge variant="success" className="gap-1"><CheckCircle2 className="h-3 w-3" /> {roleName(w.account_role_id) ?? "Active"}</Badge>;
+    if (w.account_id && w.account_signed_up)
+      return <Badge variant="secondary">Disabled{roleName(w.account_role_id) ? ` · ${roleName(w.account_role_id)}` : ""}</Badge>;
+    if ((w.account_id && !w.account_signed_up) || w.invite_status === "pending")
       return <Badge variant="warning" className="gap-1"><Mail className="h-3 w-3" /> Invite pending</Badge>;
     return <span className="text-sm text-muted-foreground">—</span>;
   }
 
+  const RoleSelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <Select value={value || "none"} onValueChange={(v) => onChange(v === "none" ? "" : v)}>
+      <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="none">No role</SelectItem>
+        {roles.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+
   return (
     <>
-      <PageHeader title="Employees" description="Your crew, pay rates, punch settings, and live locations.">
-        {canEdit && <Button onClick={startNew}><Plus className="h-4 w-4" /> Add employee</Button>}
+      <PageHeader title="Team" description="Crew, pay, app access, and live locations — all in one place.">
+        {canEdit && <Button onClick={startNew}><Plus className="h-4 w-4" /> Add team member</Button>}
       </PageHeader>
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        {/* Left: employees list */}
+        {/* Left: people list */}
         <div className={canMap ? "min-w-0 lg:w-1/2" : "min-w-0 w-full"}>
           <div className="mb-4 flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-8" placeholder="Search employees…" value={q} onChange={(e) => setQ(e.target.value)} />
+              <Input className="pl-8" placeholder="Search team…" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
             <div className="relative" ref={fsRef}>
               <Button variant="outline" size="icon" onClick={() => setFsOpen((o) => !o)} title="Filter & sort" className="relative">
@@ -213,7 +253,7 @@ export function EmployeesManager({
               </Button>
               {fsOpen && (
                 <div className="absolute right-0 z-40 mt-1 w-64 rounded-md border bg-popover p-3 shadow-lg">
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">System access</p>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">App access</p>
                   <div className="flex flex-wrap gap-1.5">
                     {STATUS_FILTERS.map((s) => (
                       <button
@@ -255,7 +295,7 @@ export function EmployeesManager({
                     <TableHead>Phone</TableHead>
                     <TableHead>Pay rate</TableHead>
                     <TableHead>Photo</TableHead>
-                    <TableHead>System access</TableHead>
+                    <TableHead>App access</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -276,7 +316,7 @@ export function EmployeesManager({
                       <TableCell>
                         {w.require_punch_photo ? <Badge variant="secondary" className="gap-1"><Camera className="h-3 w-3" /> Yes</Badge> : <span className="text-sm text-muted-foreground">No</span>}
                       </TableCell>
-                      <TableCell>{inviteBadge(w)}</TableCell>
+                      <TableCell>{accessBadge(w)}</TableCell>
                     </TableRow>
                   ))}
                   {filtered.length === 0 && (
@@ -284,9 +324,9 @@ export function EmployeesManager({
                       <TableCell colSpan={6} className="p-0">
                         <EmptyState
                           icon={Users}
-                          title={q || statusFilter !== "all" ? "No matching employees" : "No employees yet"}
-                          description={q || statusFilter !== "all" ? "Try a different search or filter." : "Add your crew to assign them to jobs and track their hours."}
-                          action={canEdit && !q && statusFilter === "all" ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add employee</Button> : undefined}
+                          title={q || statusFilter !== "all" ? "No matching people" : "No team members yet"}
+                          description={q || statusFilter !== "all" ? "Try a different search or filter." : "Add your crew to assign them to jobs, track hours, and give app access."}
+                          action={canEdit && !q && statusFilter === "all" ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add team member</Button> : undefined}
                         />
                       </TableCell>
                     </TableRow>
@@ -305,7 +345,7 @@ export function EmployeesManager({
                     <div className="truncate font-medium">{w.name}</div>
                     <div className="truncate text-xs text-muted-foreground">{w.role_title ?? "Crew"}</div>
                   </div>
-                  <div className="shrink-0">{inviteBadge(w)}</div>
+                  <div className="shrink-0">{accessBadge(w)}</div>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                   <MobileField label="Pay">{fmtMoney(w.pay_rate)}/hr</MobileField>
@@ -329,15 +369,15 @@ export function EmployeesManager({
             {filtered.length === 0 && (
               <EmptyState
                 icon={Users}
-                title={q || statusFilter !== "all" ? "No matching employees" : "No employees yet"}
-                description={q || statusFilter !== "all" ? "Try a different search or filter." : "Add your crew to assign them to jobs and track their hours."}
-                action={canEdit && !q && statusFilter === "all" ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add employee</Button> : undefined}
+                title={q || statusFilter !== "all" ? "No matching people" : "No team members yet"}
+                description={q || statusFilter !== "all" ? "Try a different search or filter." : "Add your crew to assign them to jobs, track hours, and give app access."}
+                action={canEdit && !q && statusFilter === "all" ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add team member</Button> : undefined}
               />
             )}
           </div>
         </div>
 
-        {/* Right: map of employee locations */}
+        {/* Right: map of team locations */}
         {canMap && (
           <div className="lg:sticky lg:top-4 lg:w-1/2">
             <MapView
@@ -363,14 +403,14 @@ export function EmployeesManager({
         open={!!toDelete}
         onClose={() => setToDelete(null)}
         onConfirm={confirmDelete}
-        itemLabel={toDelete?.name ?? "employee"}
+        itemLabel={toDelete?.name ?? "team member"}
         requireTyped={toDelete?.name}
       />
 
       <SlideOver
         open={open}
         onClose={() => setOpen(false)}
-        title={editing ? "Edit employee" : "Add employee"}
+        title={editing ? "Edit team member" : "Add team member"}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -378,68 +418,79 @@ export function EmployeesManager({
           </div>
         }
       >
-        <div className="space-y-4">
-          <div className="space-y-2"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Role / title</Label><Input value={form.role_title} onChange={(e) => setForm({ ...form, role_title: e.target.value })} placeholder="e.g. Carpenter" /></div>
-            <div className="space-y-2"><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-          </div>
-          <div className="space-y-2"><Label>Pay rate ($/hr)</Label><Input type="number" value={form.pay_rate} onChange={(e) => setForm({ ...form, pay_rate: +e.target.value })} /></div>
-          <div className="flex items-center justify-between rounded-md border p-3">
-            <div><div className="text-sm font-medium">Require photo with punches</div><div className="text-xs text-muted-foreground">Must attach a photo when punching in.</div></div>
-            <Switch checked={form.require_punch_photo} onCheckedChange={(v) => setForm({ ...form, require_punch_photo: v })} />
-          </div>
-
-          {!editing && (
-            <div className="space-y-3 rounded-md border p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium">Add as system user</div>
-                  <div className="text-xs text-muted-foreground">They will automatically receive a login invitation by email.</div>
-                </div>
-                <Switch checked={form.doInvite} onCheckedChange={(v) => setForm({ ...form, doInvite: v })} />
-              </div>
-              {form.doInvite && (
-                <div className="space-y-2">
-                  <Label>Email address</Label>
-                  <Input type="email" value={form.invite_email} onChange={(e) => setForm({ ...form, invite_email: e.target.value })} placeholder="employee@email.com" />
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Mail className="h-3 w-3" /> An invite email will be sent automatically once you save.
-                  </p>
-                </div>
-              )}
+        <div className="space-y-5">
+          {/* ---- Work details ---- */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Work details</h3>
+            <div className="space-y-2"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><Label>Role / title</Label><Input value={form.role_title} onChange={(e) => setForm({ ...form, role_title: e.target.value })} placeholder="e.g. Carpenter" /></div>
+              <div className="space-y-2"><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
             </div>
-          )}
+            <div className="space-y-2"><Label>Pay rate ($/hr)</Label><Input type="number" value={form.pay_rate} onChange={(e) => setForm({ ...form, pay_rate: +e.target.value })} /></div>
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <div><div className="text-sm font-medium">Require photo with punches</div><div className="text-xs text-muted-foreground">Must attach a photo when punching in.</div></div>
+              <Switch checked={form.require_punch_photo} onCheckedChange={(v) => setForm({ ...form, require_punch_photo: v })} />
+            </div>
+          </div>
 
-          {editing && (
-            <div className="space-y-3 rounded-md border p-3">
-              <div className="text-sm font-medium">System access</div>
-              {editing.invite_status === "accepted" && (
-                <p className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Active — this employee can log in.</p>
+          {/* ---- App access (admins only) ---- */}
+          {canManageAccess && (
+            <div className="space-y-4 border-t pt-5">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">App access</h3>
+
+              {/* New member */}
+              {!editing && (
+                <>
+                  <div className="flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <div className="text-sm font-medium">Give app access</div>
+                      <div className="text-xs text-muted-foreground">Send a login invite and pick their role now — they're ready the moment they accept.</div>
+                    </div>
+                    <Switch checked={form.doInvite} onCheckedChange={(v) => setForm({ ...form, doInvite: v })} />
+                  </div>
+                  {form.doInvite && (
+                    <div className="space-y-3 rounded-md border p-3">
+                      <div className="space-y-2"><Label>Email address</Label><Input type="email" value={form.invite_email} onChange={(e) => setForm({ ...form, invite_email: e.target.value })} placeholder="person@email.com" /></div>
+                      <div className="space-y-2"><Label>Role</Label><RoleSelect value={form.access_role_id} onChange={(v) => setForm({ ...form, access_role_id: v })} /></div>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" /> Invite is sent when you save.</p>
+                    </div>
+                  )}
+                </>
               )}
-              {editing.invite_status === "pending" && (
-                <p className="text-xs text-muted-foreground">Invite pending — not accepted yet.</p>
+
+              {/* Superadmin account */}
+              {editing && editing.account_superadmin && (
+                <p className="flex items-center gap-1 text-xs text-muted-foreground"><Shield className="h-3.5 w-3.5" /> This account is a superadmin with full access.</p>
               )}
-              <div className="space-y-1">
-                <Label>Login email</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="email"
-                    value={form.invite_email}
-                    onChange={(e) => setForm({ ...form, invite_email: e.target.value })}
-                    placeholder="employee@email.com"
-                  />
-                  <Button
-                    size="sm"
-                    disabled={!form.invite_email}
-                    onClick={() => editing && form.invite_email && sendInvite(editing, form.invite_email.trim())}
-                  >
-                    <Mail className="h-3.5 w-3.5 mr-1" />
-                    {editing.invite_status === "pending" ? "Resend" : editing.invite_status === "accepted" ? "Re-invite" : "Invite"}
-                  </Button>
+
+              {/* Existing linked account */}
+              {editing && editing.account_id && !editing.account_superadmin && (
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">
+                    {editing.account_email}{" · "}
+                    {editing.account_signed_up ? "signed up" : "invite pending"}
+                  </div>
+                  <div className="space-y-2"><Label>Role</Label><RoleSelect value={form.access_role_id} onChange={(v) => setForm({ ...form, access_role_id: v })} /></div>
+                  <div className="flex items-center justify-between rounded-md border p-2.5">
+                    <div className="text-sm font-medium">Can log in</div>
+                    <Switch checked={form.access_active} onCheckedChange={(v) => setForm({ ...form, access_active: v })} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Role &amp; access save with the form. Disabling blocks login without deleting anything.</p>
                 </div>
-                <p className="text-xs text-muted-foreground">Change the email and click Invite / Resend to send a new invitation.</p>
-              </div>
+              )}
+
+              {/* Existing member, no account yet → invite */}
+              {editing && !editing.account_id && (
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="space-y-2"><Label>Login email</Label><Input type="email" value={form.invite_email} onChange={(e) => setForm({ ...form, invite_email: e.target.value })} placeholder="person@email.com" /></div>
+                  <div className="space-y-2"><Label>Role</Label><RoleSelect value={form.access_role_id} onChange={(v) => setForm({ ...form, access_role_id: v })} /></div>
+                  <Button size="sm" disabled={!form.invite_email} onClick={inviteExisting}>
+                    <Mail className="h-3.5 w-3.5 mr-1" /> Send invite
+                  </Button>
+                  <p className="text-xs text-muted-foreground">They become active with this role as soon as they accept — no extra approval step.</p>
+                </div>
+              )}
             </div>
           )}
         </div>

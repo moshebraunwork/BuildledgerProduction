@@ -48,6 +48,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "punch.admin_remove_end": "Removed a time entry's end",
   "punch.admin_delete": "Deleted a time entry",
   "user.set_role": "Assigned a role",
+  "user.set_access": "Changed a user's access",
   "user.enable": "Enabled a user",
   "user.disable": "Disabled a user",
   "user.update_name": "Renamed a user",

@@ -15,8 +15,38 @@ export default async function EmployeesPage() {
       and e.invite_status = 'pending'
       and u.company_id = ${user.companyId}
       and lower(u.email) = lower(e.invite_email)
+      and u.clerk_user_id is not null
   `;
-  const employees = await sql`select * from public.employees where company_id = ${user.companyId} order by name`;
+
+  // Each employee with its linked login account (if any), so the unified Team
+  // editor can show work details and app access together.
+  const employees = await sql`
+    select e.*,
+           acc.id::text          as account_id,
+           acc.role_id::text     as account_role_id,
+           acc.is_active         as account_active,
+           acc.email             as account_email,
+           acc.is_superadmin     as account_superadmin,
+           (acc.clerk_user_id is not null) as account_signed_up
+    from public.employees e
+    left join lateral (
+      select u.* from public.users u
+      where u.company_id = e.company_id
+        and (
+          (e.user_id is not null and u.id = e.user_id)
+          or (e.invite_email is not null and lower(u.email) = lower(e.invite_email))
+        )
+      order by case when e.user_id is not null and u.id = e.user_id then 0 else 1 end
+      limit 1
+    ) acc on true
+    where e.company_id = ${user.companyId}
+    order by e.name
+  `;
+
+  const canManageAccess = can(user.isSuperadmin, user.permissions, "admin.users");
+  const roles = canManageAccess
+    ? await sql`select id::text as id, name from public.roles where company_id = ${user.companyId} order by is_system desc, name`
+    : [];
 
   const canMap = can(user.isSuperadmin, user.permissions, "map.employees");
   let locationPins: EmpPin[] = [];
@@ -42,6 +72,8 @@ export default async function EmployeesPage() {
       initialEmployees={employees as any[]}
       canEdit={can(user.isSuperadmin, user.permissions, "employees.edit")}
       canDelete={can(user.isSuperadmin, user.permissions, "employees.delete")}
+      canManageAccess={canManageAccess}
+      roles={roles as { id: string; name: string }[]}
       canMap={canMap}
       locationPins={locationPins}
     />

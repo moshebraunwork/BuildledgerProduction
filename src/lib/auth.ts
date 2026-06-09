@@ -49,12 +49,15 @@ async function ensureProfile(clerkUserId: string, email: string, fullName: strin
     limit 1
   `;
   if (preProvisioned.length) {
-    // Claim this row — link the Clerk user ID and update name
+    // Claim this row — link the Clerk user ID and update name. If the account
+    // was invited with a role already assigned (one-step onboarding), activate
+    // it now so they can use the app immediately, no manual approval step.
     await sql`
       update public.users
       set clerk_user_id = ${clerkUserId},
           full_name = coalesce(full_name, ${fullName}),
-          email = ${email}
+          email = ${email},
+          is_active = case when role_id is not null then true else is_active end
       where id = ${preProvisioned[0].id}
     `;
     return;
