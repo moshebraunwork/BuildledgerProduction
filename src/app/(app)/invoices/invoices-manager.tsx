@@ -458,7 +458,6 @@ ${inv.notes ? `<div class="notes"><div class="sect">Notes</div><p>${inv.notes}</
                   <TableHead className={thClass} onClick={() => toggleSort("status")}>
                     Status <SortIcon col="status" />
                   </TableHead>
-                  <TableHead className="w-8" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -479,21 +478,11 @@ ${inv.notes ? `<div class="notes"><div class="sect">Notes</div><p>${inv.notes}</
                         {inv.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <button
-                        type="button"
-                        className="rounded p-1 hover:bg-accent"
-                        onClick={(e) => { e.stopPropagation(); rowMenu(e, inv); }}
-                        aria-label="More options"
-                      >
-                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                      </button>
-                    </TableCell>
                   </TableRow>
                 ))}
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="p-0">
+                    <TableCell colSpan={6} className="p-0">
                       <EmptyState
                         icon={FileText}
                         title={q || statusFilter !== "all" ? "No matching invoices" : "No invoices yet"}

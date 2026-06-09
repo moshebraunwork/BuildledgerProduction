@@ -40,6 +40,7 @@ import StarterKit from "@tiptap/starter-kit";
 import TipTapImage from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import { AddressAutocomplete } from "@/components/address-autocomplete";
 
 // ---- Types ----
 interface Employee { id: string; name: string; role_title: string | null; pay_rate: number; require_punch_photo: boolean; }
@@ -48,6 +49,7 @@ interface Job {
   customer_name: string | null; customer_email: string | null; notes: string | null;
   estimate: number; billing_mode: string; billing_rate: number | null; status: string;
   require_punch_photo: boolean; created_at: string; updated_at: string | null;
+  lat: number | null; lng: number | null;
 }
 interface JobItem { id: string; item_id: string | null; name: string; qty: number; cost: number; charge: number; excluded: boolean; }
 interface CatalogItem { id: string; name: string; cost: number; charge: number; stock: number; }
@@ -321,23 +323,31 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
   async function saveEdit() {
     if (!job || !editForm.title) return;
     setSaving(true);
-    const res = await updateJob(job.id, {
-      title: editForm.title!, place: editForm.place ?? null,
-      scheduled_date: editForm.scheduled_date ?? null,
-      customer_name: editForm.customer_name ?? null,
-      customer_email: editForm.customer_email ?? null,
-      estimate: Number(editForm.estimate ?? 0),
-      billing_mode: editForm.billing_mode ?? "itemized",
-      billing_rate: editForm.billing_rate ?? null,
-      status: editForm.status,
-    });
-    setSaving(false);
-    if (res.error) return toast({ title: "Save failed", description: res.error, variant: "destructive" });
-    const updated = res.data as Job;
-    setJob(updated);
-    setEditing(false);
-    router.refresh();
-    toast({ title: "Job saved", variant: "success" });
+    try {
+      const res = await updateJob(job.id, {
+        title: editForm.title!, place: editForm.place ?? null,
+        scheduled_date: editForm.scheduled_date ?? null,
+        customer_name: editForm.customer_name ?? null,
+        customer_email: editForm.customer_email ?? null,
+        estimate: Number(editForm.estimate ?? 0),
+        billing_mode: editForm.billing_mode ?? "itemized",
+        billing_rate: editForm.billing_rate ?? null,
+        status: editForm.status,
+        lat: editForm.lat ?? null, lng: editForm.lng ?? null,
+      });
+      if (res.error) return toast({ title: "Save failed", description: res.error, variant: "destructive" });
+      const updated = res.data as Job;
+      setJob(updated);
+      setEditing(false);
+      router.refresh();
+      toast({ title: "Job saved", variant: "success" });
+    } catch (e: any) {
+      // A rejected server action (e.g. a transient DB/network error) must not
+      // leave the button stuck on "Saving…" — always re-enable and tell the user.
+      toast({ title: "Save failed", description: e?.message ?? "Something went wrong. Please try again.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleMarkComplete() {
@@ -806,7 +816,13 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                 {editing ? (
                   <>
                     <div className="space-y-2"><Label>Title</Label><Input value={editForm.title ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} /></div>
-                    <div className="space-y-2"><Label>Place / address</Label><Input value={editForm.place ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, place: e.target.value || null }))} /></div>
+                    <div className="space-y-2">
+                      <Label>Place / address</Label>
+                      <AddressAutocomplete
+                        value={editForm.place ? { place: editForm.place, lat: editForm.lat ?? null, lng: editForm.lng ?? null } : null}
+                        onChange={(v) => setEditForm((f) => ({ ...f, place: v?.place ?? null, lat: v?.lat ?? null, lng: v?.lng ?? null }))}
+                      />
+                    </div>
                     <div className="space-y-2"><Label>Customer name</Label><Input value={editForm.customer_name ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, customer_name: e.target.value || null }))} /></div>
                     <div className="space-y-2"><Label>Customer email</Label><Input type="email" value={editForm.customer_email ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, customer_email: e.target.value || null }))} /></div>
                     <div className="space-y-2"><Label>Scheduled date</Label><Input type="date" value={editForm.scheduled_date ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, scheduled_date: e.target.value || null }))} /></div>

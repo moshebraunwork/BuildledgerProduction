@@ -74,6 +74,17 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     module: "Activity Log",
     perms: [{ key: "logs.view", label: "View activity log" }],
   },
+  {
+    module: "Map",
+    perms: [
+      { key: "map.view", label: "View the map" },
+      { key: "map.employees", label: "See employee locations on the map" },
+    ],
+  },
+  {
+    module: "Ask AI",
+    perms: [{ key: "ai.use", label: "Use the Ask AI assistant" }],
+  },
 ];
 
 // Flat list of all permission keys

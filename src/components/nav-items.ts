@@ -28,5 +28,5 @@ export const NAV: NavItem[] = [
   { href: "/jobs",      label: "Jobs",      icon: Hammer,   perm: "jobs.view" },
   { href: "/invoices",  label: "Invoices",  icon: FileText, perm: "invoices.view" },
   { href: "/inventory", label: "Inventory", icon: Boxes,    perm: "inventory.view" },
-  { href: "/employees", label: "Employees", icon: Users,    perm: "employees.view" },
+  { href: "/employees", label: "Team",      icon: Users,    perm: "employees.view" },
 ];

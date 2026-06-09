@@ -1,6 +1,8 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { cookies } from "next/headers";
 import { sql } from "./db";
 import type { PermissionMap } from "./permissions";
+import { DEMO_COOKIE, demoEnabled } from "./demo";
 
 const DEFAULT_COMPANY_ID = "00000000-0000-0000-0000-000000000001";
 const ADMIN_ROLE_ID = "00000000-0000-0000-0000-0000000000a1";
@@ -16,6 +18,7 @@ export interface CurrentUser {
   isActive: boolean;
   theme: string;
   permissions: PermissionMap;
+  requireLocation: boolean;
 }
 
 // Ensures a profile row exists in Neon for the signed-in Clerk user.
@@ -48,12 +51,15 @@ async function ensureProfile(clerkUserId: string, email: string, fullName: strin
     limit 1
   `;
   if (preProvisioned.length) {
-    // Claim this row — link the Clerk user ID and update name
+    // Claim this row — link the Clerk user ID and update name. If the account
+    // was invited with a role already assigned (one-step onboarding), activate
+    // it now so they can use the app immediately, no manual approval step.
     await sql`
       update public.users
       set clerk_user_id = ${clerkUserId},
           full_name = coalesce(full_name, ${fullName}),
-          email = ${email}
+          email = ${email},
+          is_active = case when role_id is not null then true else is_active end
       where id = ${preProvisioned[0].id}
     `;
     return;
@@ -76,9 +82,43 @@ async function ensureProfile(clerkUserId: string, email: string, fullName: strin
 
 // Loads the authenticated user's profile + effective permissions.
 // Returns null if not signed in. Bootstraps the profile row on first call.
+// The shared guest superadmin used by demo mode. Created on first use.
+async function getDemoGuest(): Promise<CurrentUser> {
+  let rows = await sql`select id, company_id from public.users where clerk_user_id = 'demo-guest' limit 1`;
+  if (!rows.length) {
+    await sql`
+      insert into public.users (clerk_user_id, company_id, email, full_name, is_superadmin, is_active)
+      values ('demo-guest', ${DEFAULT_COMPANY_ID}, 'guest@demo.local', 'Demo Guest', true, true)
+      on conflict (clerk_user_id) do nothing
+    `;
+    rows = await sql`select id, company_id from public.users where clerk_user_id = 'demo-guest' limit 1`;
+  }
+  const p = rows[0];
+  return {
+    id: p.id,
+    clerkUserId: "demo-guest",
+    email: "guest@demo.local",
+    fullName: "Demo Guest",
+    companyId: p.company_id,
+    roleId: null,
+    isSuperadmin: true,
+    isActive: true,
+    theme: "system",
+    permissions: {},
+    requireLocation: false,
+  };
+}
+
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   const { userId } = await auth();
-  if (!userId) return null;
+  if (!userId) {
+    // No Clerk session — allow a demo guest if demo mode is on and the cookie is set.
+    if (demoEnabled()) {
+      const jar = await cookies();
+      if (jar.get(DEMO_COOKIE)) return getDemoGuest();
+    }
+    return null;
+  }
 
   const cu = await currentUser();
   const email =
@@ -102,6 +142,19 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   if (!rows.length) return null;
   const p = rows[0];
 
+  // Whether this user's role requires sharing location (added in migration 0014).
+  // Queried separately + guarded so a database that hasn't run 0014 yet still
+  // authenticates normally.
+  let requireLocation = false;
+  if (p.role_id) {
+    try {
+      const rl = await sql`select require_location from public.roles where id = ${p.role_id} limit 1`;
+      requireLocation = !!rl[0]?.require_location;
+    } catch {
+      /* column not present yet — treat as not required */
+    }
+  }
+
   return {
     id: p.id,
     clerkUserId: p.clerk_user_id,
@@ -113,6 +166,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     isActive: p.is_active,
     theme: p.theme ?? "system",
     permissions: (p.role_permissions as PermissionMap) ?? {},
+    requireLocation,
   };
 }
 

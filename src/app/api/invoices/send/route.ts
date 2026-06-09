@@ -3,7 +3,7 @@ import { Resend } from "resend";
 import { sql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { audit } from "@/lib/audit";
+import { auditUser } from "@/lib/audit";
 import { fmtMoney, fmtDate } from "@/lib/utils";
 
 // Escape user/DB-supplied strings before interpolating into the email HTML,
@@ -227,14 +227,11 @@ export async function POST(req: Request) {
     `;
   }
 
-  await audit({
-    companyId: user.companyId,
-    actorId: user.id,
-    actorEmail: user.email,
+  await auditUser(user, {
     action: "invoice.send",
     entity: "invoice",
     entityId: invoiceId,
-    detail: { to: toEmail, total: inv.total },
+    detail: { number: inv.number, to: toEmail, total: inv.total },
   });
 
   return NextResponse.json({ ok: true });
