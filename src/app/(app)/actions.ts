@@ -1,8 +1,10 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { sql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { auditUser } from "@/lib/audit";
+import { DEMO_COOKIE } from "@/lib/demo";
 
 // Saves the signed-in user's theme preference. Intentionally not audited — it's
 // a high-frequency cosmetic toggle that would only add noise to the activity log.
@@ -24,5 +26,12 @@ export async function recordSignOut() {
     entity: "session",
     entityId: user.id,
   });
+  // If this was a demo guest, also clear the guest cookie so they're logged out.
+  try {
+    const jar = await cookies();
+    if (jar.get(DEMO_COOKIE)) jar.delete(DEMO_COOKIE);
+  } catch {
+    /* not in a mutable cookie context — ignore */
+  }
   return { ok: true };
 }

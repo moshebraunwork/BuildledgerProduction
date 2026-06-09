@@ -81,6 +81,7 @@ export function JobsManager({
   // user is hovering so each side reacts (table hover → pan map; map hover →
   // scroll the row into view) without feedback loops.
   const [hover, setHover] = React.useState<{ id: string; source: "table" | "map" } | null>(null);
+  const [mobileView, setMobileView] = React.useState<"list" | "map">("list");
   const [fsOpen, setFsOpen] = React.useState(false);
   const fsRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
@@ -190,9 +191,25 @@ export function JobsManager({
         {canEdit && <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New job</Button>}
       </PageHeader>
 
+      {/* Mobile-only List / Map switch (both panes show side-by-side on desktop) */}
+      {canMap && (
+        <div className="mb-4 flex rounded-md border p-0.5 lg:hidden">
+          {(["list", "map"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setMobileView(v)}
+              className={`flex-1 rounded py-1.5 text-sm font-medium capitalize transition-colors ${mobileView === v ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {/* Left: jobs list */}
-        <div className={canMap ? "min-w-0 lg:w-1/2" : "min-w-0 w-full"}>
+        <div className={`min-w-0 ${canMap ? `lg:w-1/2 ${mobileView === "map" ? "hidden lg:block" : ""}` : "w-full"}`}>
       <div className="mb-4 flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -245,7 +262,6 @@ export function JobsManager({
                 <TableRow>
                   <TableHead>Job</TableHead><TableHead>Customer</TableHead><TableHead>Scheduled</TableHead>
                   <TableHead>Estimate</TableHead><TableHead>Billing</TableHead><TableHead>Status</TableHead>
-                  <TableHead className="w-8"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -268,22 +284,11 @@ export function JobsManager({
                     <TableCell>{fmtMoney(j.estimate)}</TableCell>
                     <TableCell className="text-sm capitalize">{j.billing_mode}</TableCell>
                     <TableCell><Badge variant={statusVariant[j.status] ?? "secondary"} className="capitalize">{j.status}</Badge></TableCell>
-                    <TableCell>
-                      {/* Touch-friendly context menu button */}
-                      <button
-                        type="button"
-                        className="rounded p-1 hover:bg-accent"
-                        onClick={(e) => { e.stopPropagation(); rowMenu(e, j); }}
-                        aria-label="More options"
-                      >
-                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                      </button>
-                    </TableCell>
                   </TableRow>
                 ))}
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="p-0">
+                    <TableCell colSpan={6} className="p-0">
                       <EmptyState
                         icon={Hammer}
                         title={q || statusFilter !== "all" ? "No matching jobs" : "No jobs yet"}
@@ -349,7 +354,7 @@ export function JobsManager({
 
         {/* Right: map of jobs (and employees, if permitted) */}
         {canMap && (
-          <div className="lg:sticky lg:top-4 lg:w-1/2">
+          <div className={`lg:sticky lg:top-4 lg:w-1/2 ${mobileView === "list" ? "hidden lg:block" : ""}`}>
             <MapView
               jobs={jobPins}
               initialEmployees={employeePins}

@@ -241,8 +241,9 @@ export function MapView({
     const e = panEmpId ? employees.find((x) => x.employee_id === panEmpId) : null;
     const target = j ? [+j.lat, +j.lng] : e ? [+e.lat, +e.lng] : null;
     if (!target) return;
-    ctx.map.panTo(target as [number, number], { animate: true });
-    if (ctx.map.getZoom() < 12) ctx.map.setZoom(13);
+    // Smooth glide (pan + gentle zoom) instead of a hard jump.
+    const z = Math.max(ctx.map.getZoom(), 13);
+    ctx.map.flyTo(target as [number, number], z, { duration: 0.6, easeLinearity: 0.25 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panJobId, panEmpId, ready]);
 

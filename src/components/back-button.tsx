@@ -19,19 +19,17 @@ export function BackButton({
 
   if (href) {
     return (
-      <Button asChild variant="ghost" size="sm" className={className}>
-        <Link href={href}>
+      <Button asChild variant="ghost" size="icon" className={className} title={label}>
+        <Link href={href} aria-label={label}>
           <ArrowLeft className="h-4 w-4" />
-          {label}
         </Link>
       </Button>
     );
   }
 
   return (
-    <Button variant="ghost" size="sm" className={className} onClick={() => router.back()}>
+    <Button variant="ghost" size="icon" className={className} onClick={() => router.back()} title={label} aria-label={label}>
       <ArrowLeft className="h-4 w-4" />
-      {label}
     </Button>
   );
 }

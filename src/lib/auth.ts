@@ -1,6 +1,8 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { cookies } from "next/headers";
 import { sql } from "./db";
 import type { PermissionMap } from "./permissions";
+import { DEMO_COOKIE, demoEnabled } from "./demo";
 
 const DEFAULT_COMPANY_ID = "00000000-0000-0000-0000-000000000001";
 const ADMIN_ROLE_ID = "00000000-0000-0000-0000-0000000000a1";
@@ -80,9 +82,43 @@ async function ensureProfile(clerkUserId: string, email: string, fullName: strin
 
 // Loads the authenticated user's profile + effective permissions.
 // Returns null if not signed in. Bootstraps the profile row on first call.
+// The shared guest superadmin used by demo mode. Created on first use.
+async function getDemoGuest(): Promise<CurrentUser> {
+  let rows = await sql`select id, company_id from public.users where clerk_user_id = 'demo-guest' limit 1`;
+  if (!rows.length) {
+    await sql`
+      insert into public.users (clerk_user_id, company_id, email, full_name, is_superadmin, is_active)
+      values ('demo-guest', ${DEFAULT_COMPANY_ID}, 'guest@demo.local', 'Demo Guest', true, true)
+      on conflict (clerk_user_id) do nothing
+    `;
+    rows = await sql`select id, company_id from public.users where clerk_user_id = 'demo-guest' limit 1`;
+  }
+  const p = rows[0];
+  return {
+    id: p.id,
+    clerkUserId: "demo-guest",
+    email: "guest@demo.local",
+    fullName: "Demo Guest",
+    companyId: p.company_id,
+    roleId: null,
+    isSuperadmin: true,
+    isActive: true,
+    theme: "system",
+    permissions: {},
+    requireLocation: false,
+  };
+}
+
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   const { userId } = await auth();
-  if (!userId) return null;
+  if (!userId) {
+    // No Clerk session — allow a demo guest if demo mode is on and the cookie is set.
+    if (demoEnabled()) {
+      const jar = await cookies();
+      if (jar.get(DEMO_COOKIE)) return getDemoGuest();
+    }
+    return null;
+  }
 
   const cu = await currentUser();
   const email =

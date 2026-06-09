@@ -70,6 +70,7 @@ export function EmployeesManager({
   const [ctx, setCtx] = React.useState<ContextMenuState | null>(null);
   const [toDelete, setToDelete] = React.useState<Employee | null>(null);
   const [hover, setHover] = React.useState<{ id: string; source: "table" | "map" } | null>(null);
+  const [mobileView, setMobileView] = React.useState<"list" | "map">("list");
 
   const roleName = React.useMemo(() => {
     const m: Record<string, string> = {};
@@ -238,9 +239,24 @@ export function EmployeesManager({
         {canEdit && <Button onClick={startNew}><Plus className="h-4 w-4" /> Add team member</Button>}
       </PageHeader>
 
+      {canMap && (
+        <div className="mb-4 flex rounded-md border p-0.5 lg:hidden">
+          {(["list", "map"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setMobileView(v)}
+              className={`flex-1 rounded py-1.5 text-sm font-medium capitalize transition-colors ${mobileView === v ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {/* Left: people list */}
-        <div className={canMap ? "min-w-0 lg:w-1/2" : "min-w-0 w-full"}>
+        <div className={`min-w-0 ${canMap ? `lg:w-1/2 ${mobileView === "map" ? "hidden lg:block" : ""}` : "w-full"}`}>
           <div className="mb-4 flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -379,7 +395,7 @@ export function EmployeesManager({
 
         {/* Right: map of team locations */}
         {canMap && (
-          <div className="lg:sticky lg:top-4 lg:w-1/2">
+          <div className={`lg:sticky lg:top-4 lg:w-1/2 ${mobileView === "list" ? "hidden lg:block" : ""}`}>
             <MapView
               jobs={[]}
               initialEmployees={locationPins}
