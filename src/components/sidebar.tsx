@@ -83,7 +83,7 @@ export function Sidebar({
       {/* Brand + collapse toggle */}
       <div className={cn("flex h-14 items-center border-b", collapsed ? "justify-center px-2" : "justify-between px-4")}>
         <div className="flex items-center gap-2 overflow-hidden">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-sm">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-md ring-1 ring-primary/20">
             <HardHat className="h-4 w-4" />
           </div>
           {!collapsed && (
@@ -173,8 +173,8 @@ export function Sidebar({
               href={item.href}
               title={collapsed ? item.label : undefined}
               className={cn(
-                "relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                active ? "bg-gradient-to-r from-primary/15 to-transparent text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 hover:translate-x-0.5",
+                active ? "bg-gradient-to-r from-primary/15 to-transparent text-primary shadow-sm" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 collapsed && "justify-center px-2"
               )}
             >
@@ -194,11 +194,11 @@ export function Sidebar({
             onClick={openPanel}
             title={collapsed ? "Ask AI" : undefined}
             className={cn(
-              "group flex w-full items-center gap-3 rounded-md border border-primary/20 bg-gradient-to-r from-primary/10 to-violet-500/10 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:from-primary/20 hover:to-violet-500/20",
+              "group flex w-full items-center gap-3 rounded-lg border border-primary/20 bg-gradient-to-r from-primary/10 to-violet-500/10 px-3 py-2 text-sm font-medium text-foreground shadow-sm transition-all hover:from-primary/20 hover:to-violet-500/20 hover:shadow-[0_0_12px_hsl(var(--primary)/0.25)]",
               collapsed && "justify-center px-2"
             )}
           >
-            <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+            <Sparkles className="h-4 w-4 shrink-0 text-primary transition-transform duration-200 group-hover:rotate-12 group-hover:scale-110" />
             {!collapsed && <span className="truncate">Ask AI</span>}
           </button>
         </div>
@@ -215,8 +215,8 @@ export function Sidebar({
                 collapsed && "justify-center"
               )}
             >
-              <Avatar className="h-8 w-8 shrink-0">
-                <AvatarFallback>{initials}</AvatarFallback>
+              <Avatar className="h-8 w-8 shrink-0 ring-2 ring-primary/20 ring-offset-1 ring-offset-card">
+                <AvatarFallback className="bg-gradient-to-br from-primary/15 to-violet-500/15 text-foreground">{initials}</AvatarFallback>
               </Avatar>
               {!collapsed && (
                 <div className="flex min-w-0 flex-1 flex-col items-start">

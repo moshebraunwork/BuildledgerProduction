@@ -93,10 +93,10 @@ export function MobileNav({
           <Menu className="h-5 w-5" />
         </button>
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded bg-primary text-primary-foreground">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-sm">
             <HardHat className="h-4 w-4" />
           </div>
-          <span className="font-semibold">BuildLedger</span>
+          <span className="bg-gradient-to-r from-primary to-violet-500 bg-clip-text font-semibold text-transparent dark:from-foreground dark:to-violet-300">BuildLedger</span>
         </div>
       </header>
 
@@ -119,10 +119,10 @@ export function MobileNav({
         >
           <div className="flex h-14 items-center justify-between border-b px-4">
             <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded bg-primary text-primary-foreground">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-sm">
                 <HardHat className="h-4 w-4" />
               </div>
-              <span className="font-semibold">BuildLedger</span>
+              <span className="bg-gradient-to-r from-primary to-violet-500 bg-clip-text font-semibold text-transparent dark:from-foreground dark:to-violet-300">BuildLedger</span>
             </div>
             <button
               type="button"
@@ -152,8 +152,8 @@ export function MobileNav({
           {/* Profile footer — identity, theme preference and sign out. */}
           <div className="border-t p-3 space-y-3">
             <div className="flex items-center gap-3">
-              <Avatar className="h-9 w-9 shrink-0">
-                <AvatarFallback>{initials}</AvatarFallback>
+              <Avatar className="h-9 w-9 shrink-0 ring-2 ring-primary/20 ring-offset-1 ring-offset-card">
+                <AvatarFallback className="bg-gradient-to-br from-primary/15 to-violet-500/15 text-foreground">{initials}</AvatarFallback>
               </Avatar>
               <div className="flex min-w-0 flex-col">
                 <span className="truncate text-sm font-medium">{fullName || "User"}</span>
