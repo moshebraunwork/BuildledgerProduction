@@ -76,17 +76,21 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "hidden flex-col border-r bg-card transition-[width] duration-200 md:flex",
+        "hidden flex-col border-r bg-card shadow-sm transition-[width] duration-200 md:flex",
         collapsed ? "w-16" : "w-60"
       )}
     >
       {/* Brand + collapse toggle */}
       <div className={cn("flex h-14 items-center border-b", collapsed ? "justify-center px-2" : "justify-between px-4")}>
         <div className="flex items-center gap-2 overflow-hidden">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-primary text-primary-foreground">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-sm">
             <HardHat className="h-4 w-4" />
           </div>
-          {!collapsed && <span className="font-semibold truncate">BuildLedger</span>}
+          {!collapsed && (
+            <span className="truncate bg-gradient-to-r from-primary to-violet-500 bg-clip-text font-semibold text-transparent dark:from-foreground dark:to-violet-300">
+              BuildLedger
+            </span>
+          )}
         </div>
         {!collapsed && (
           <button
@@ -170,11 +174,11 @@ export function Sidebar({
               title={collapsed ? item.label : undefined}
               className={cn(
                 "relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                active ? "bg-gradient-to-r from-primary/15 to-transparent text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 collapsed && "justify-center px-2"
               )}
             >
-              {active && !collapsed && <span className="absolute inset-y-1.5 left-0 w-1 rounded-r-full bg-primary" />}
+              {active && !collapsed && <span className="absolute inset-y-1 left-0 w-1 rounded-r-full bg-gradient-to-b from-primary to-violet-500 shadow-[0_0_8px_hsl(var(--primary)/0.5)]" />}
               <Icon className="h-4 w-4 shrink-0" />
               {!collapsed && <span className="truncate">{item.label}</span>}
             </Link>

@@ -71,10 +71,10 @@ export function MobileNav({
       className={cn(
         "relative flex items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors",
         small ? "py-2" : "py-2.5",
-        active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground"
+        active ? "bg-gradient-to-r from-primary/15 to-transparent text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground"
       )}
     >
-      {active && <span className="absolute inset-y-1.5 left-0 w-1 rounded-r-full bg-primary" />}
+      {active && <span className="absolute inset-y-1 left-0 w-1 rounded-r-full bg-gradient-to-b from-primary to-violet-500" />}
       <Icon className="h-4 w-4 shrink-0" />
       <span className="truncate">{label}</span>
     </Link>
@@ -83,7 +83,7 @@ export function MobileNav({
   return (
     <>
       {/* Top bar (mobile only) */}
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-card px-3 md:hidden">
+      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-card/95 px-3 shadow-sm backdrop-blur-md md:hidden">
         <button
           type="button"
           onClick={() => setOpen(true)}

@@ -61,10 +61,10 @@ export default async function DashboardPage() {
   const outstanding = (invoices as any[]).filter((i) => i.status === "sent").reduce((s, i) => s + Number(i.total || 0), 0);
 
   const stats = [
-    { label: "Revenue (collected)", value: fmtMoney(collected), sub: `${fmtMoney(outstanding)} outstanding`, icon: DollarSign, tint: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
-    { label: "Active jobs", value: String(activeCount[0].n), sub: `${jobsCount[0].n} total`, icon: Hammer, tint: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
-    { label: "Employees", value: String(employeesCount[0].n), sub: `${openPunches[0].n} clocked in now`, icon: Users, tint: "bg-violet-500/10 text-violet-600 dark:text-violet-400" },
-    { label: "Low stock", value: String(lowStock), sub: `${(items as any[]).length} items total`, icon: Boxes, tint: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
+    { label: "Revenue (collected)", value: fmtMoney(collected), sub: `${fmtMoney(outstanding)} outstanding`, icon: DollarSign, tint: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", accent: "bg-emerald-500" },
+    { label: "Active jobs", value: String(activeCount[0].n), sub: `${jobsCount[0].n} total`, icon: Hammer, tint: "bg-blue-500/10 text-blue-600 dark:text-blue-400", accent: "bg-blue-500" },
+    { label: "Employees", value: String(employeesCount[0].n), sub: `${openPunches[0].n} clocked in now`, icon: Users, tint: "bg-violet-500/10 text-violet-600 dark:text-violet-400", accent: "bg-violet-500" },
+    { label: "Low stock", value: String(lowStock), sub: `${(items as any[]).length} items total`, icon: Boxes, tint: "bg-amber-500/10 text-amber-600 dark:text-amber-400", accent: "bg-amber-500" },
   ];
 
   const jobStatusData = [
@@ -84,7 +84,8 @@ export default async function DashboardPage() {
         {stats.map((s) => {
           const Icon = s.icon;
           return (
-            <Card key={s.label} className="transition-shadow hover:shadow-md">
+            <Card key={s.label} className="relative overflow-hidden transition-all hover:shadow-md md:hover:-translate-y-0.5">
+              <span className={cn("absolute inset-x-0 top-0 h-1", s.accent)} />
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
                 <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg", s.tint)}>
