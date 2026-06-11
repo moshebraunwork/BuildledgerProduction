@@ -14,14 +14,19 @@ import { auditUser } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 
 // Resolve the employee row linked to the signed-in user (by internal user id or
-// Clerk id), scoped to their company. Returns nulls when not signed in or when
-// no employee profile is linked to the account.
+// Clerk id), scoped to their company. Returns nulls when not signed in.
 //
 // Linking: the only identifier shared between a login and an employee record is
 // the email (employees.invite_email, set when the employee was invited). The
 // user_id / clerk_user_id columns aren't populated anywhere else, so we match on
 // id/clerk id first and fall back to email — then backfill the link columns so
 // the match is fast and stable from then on.
+//
+// Self-provisioning: the clock is a self-service feature available to every
+// signed-in user, so when no employee record matches (typical for the company
+// owner/admin who was never "invited"), one is created and linked on the spot
+// instead of dead-ending with "no profile linked". Details (pay rate, role
+// title, …) can be filled in later on the Employees page.
 async function currentEmployee() {
   const user = await getCurrentUser();
   if (!user) return { user: null as null, employee: null as any };
@@ -41,7 +46,28 @@ async function currentEmployee() {
     end
     limit 1
   `;
-  const employee = rows[0] ?? null;
+  let employee = rows[0] ?? null;
+  if (!employee) {
+    // The "not exists" guard keeps a double-submit from creating duplicates.
+    const created = await sql`
+      insert into public.employees (company_id, user_id, clerk_user_id, name, invite_email, invite_status)
+      select ${user.companyId}, ${user.id}, ${user.clerkUserId}, ${user.fullName ?? user.email}, ${user.email}, 'accepted'
+      where not exists (
+        select 1 from public.employees
+        where company_id = ${user.companyId}
+          and (user_id = ${user.id} or clerk_user_id = ${user.clerkUserId})
+      )
+      returning id, name, require_punch_photo, user_id, clerk_user_id
+    `;
+    employee = created[0] ?? null;
+    if (employee) {
+      await auditUser(user, {
+        action: "employee.self_provisioned", entity: "employee", entityId: employee.id,
+        detail: { name: employee.name, email: user.email },
+      });
+      revalidatePath("/employees");
+    }
+  }
   // Backfill the link columns when we matched by email (or only had one set), so
   // future lookups hit the indexed id/clerk-id path.
   if (employee && (employee.user_id == null || employee.clerk_user_id == null)) {

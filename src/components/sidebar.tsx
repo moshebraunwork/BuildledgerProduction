@@ -81,9 +81,9 @@ export function Sidebar({
       )}
     >
       {/* Brand + collapse toggle */}
-      <div className={cn("flex h-14 items-center border-b", collapsed ? "justify-center px-2" : "justify-between px-4")}>
+      <div className={cn("flex h-14 items-center border-b bg-gradient-to-r from-primary/5 to-transparent", collapsed ? "justify-center px-2" : "justify-between px-4")}>
         <div className="flex items-center gap-2 overflow-hidden">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-md ring-1 ring-primary/20">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-md shadow-primary/25 ring-1 ring-primary/20 transition-transform duration-200 hover:scale-105">
             <HardHat className="h-4 w-4" />
           </div>
           {!collapsed && (
@@ -96,7 +96,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={toggleCollapsed}
-            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="rounded-full border border-transparent p-1 text-muted-foreground transition-colors hover:border-border hover:bg-accent hover:text-foreground"
             aria-label="Collapse sidebar"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -107,7 +107,7 @@ export function Sidebar({
         <button
           type="button"
           onClick={toggleCollapsed}
-          className="mx-auto mt-2 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="mx-auto mt-2 rounded-full border border-transparent p-1 text-muted-foreground transition-colors hover:border-border hover:bg-accent hover:text-foreground"
           aria-label="Expand sidebar"
         >
           <ChevronRight className="h-4 w-4" />
@@ -179,7 +179,7 @@ export function Sidebar({
               )}
             >
               {active && !collapsed && <span className="absolute inset-y-1 left-0 w-1 rounded-r-full bg-gradient-to-b from-primary to-violet-500 shadow-[0_0_8px_hsl(var(--primary)/0.5)]" />}
-              <Icon className="h-4 w-4 shrink-0" />
+              <Icon className={cn("h-4 w-4 shrink-0 transition-transform", active && "scale-110")} />
               {!collapsed && <span className="truncate">{item.label}</span>}
             </Link>
           );
@@ -215,9 +215,13 @@ export function Sidebar({
                 collapsed && "justify-center"
               )}
             >
-              <Avatar className="h-8 w-8 shrink-0 ring-2 ring-primary/20 ring-offset-1 ring-offset-card">
-                <AvatarFallback className="bg-gradient-to-br from-primary/15 to-violet-500/15 text-foreground">{initials}</AvatarFallback>
-              </Avatar>
+              <span className="relative shrink-0">
+                <Avatar className="h-8 w-8 ring-2 ring-primary/20 ring-offset-1 ring-offset-card">
+                  <AvatarFallback className="bg-gradient-to-br from-primary/15 to-violet-500/15 text-foreground">{initials}</AvatarFallback>
+                </Avatar>
+                {/* Presence dot — signed-in indicator */}
+                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-emerald-500" />
+              </span>
               {!collapsed && (
                 <div className="flex min-w-0 flex-1 flex-col items-start">
                   <span className="truncate text-sm font-medium">{fullName || "User"}</span>

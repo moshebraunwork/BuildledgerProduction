@@ -70,12 +70,12 @@ export function MobileNav({
       href={href}
       className={cn(
         "relative flex items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors",
-        small ? "py-2" : "py-2.5",
+        small ? "py-2.5" : "py-3",
         active ? "bg-gradient-to-r from-primary/15 to-transparent text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground"
       )}
     >
       {active && <span className="absolute inset-y-1 left-0 w-1 rounded-r-full bg-gradient-to-b from-primary to-violet-500" />}
-      <Icon className="h-4 w-4 shrink-0" />
+      <Icon className={cn("shrink-0", small ? "h-4 w-4" : "h-5 w-5")} />
       <span className="truncate">{label}</span>
     </Link>
   );
@@ -93,11 +93,17 @@ export function MobileNav({
           <Menu className="h-5 w-5" />
         </button>
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-sm">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-md shadow-primary/25 ring-1 ring-primary/20">
             <HardHat className="h-4 w-4" />
           </div>
           <span className="bg-gradient-to-r from-primary to-violet-500 bg-clip-text font-semibold text-transparent dark:from-foreground dark:to-violet-300">BuildLedger</span>
         </div>
+        {/* Quick profile shortcut on the right — mirrors the desktop sidebar avatar */}
+        <Link href="/settings" className="ml-auto" aria-label="My settings">
+          <Avatar className="h-8 w-8 ring-2 ring-primary/20 ring-offset-1 ring-offset-card">
+            <AvatarFallback className="bg-gradient-to-br from-primary/15 to-violet-500/15 text-xs text-foreground">{initials}</AvatarFallback>
+          </Avatar>
+        </Link>
       </header>
 
       {/* Drawer */}
@@ -108,10 +114,10 @@ export function MobileNav({
         )}
         aria-hidden={!open}
       >
-        <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setOpen(false)} />
         <div
           className={cn(
-            "absolute left-0 top-0 flex h-full w-72 max-w-[82%] flex-col border-r bg-card shadow-xl transition-transform duration-200 ease-out",
+            "absolute left-0 top-0 flex h-full w-72 max-w-[82%] flex-col rounded-r-2xl border-r bg-card shadow-xl transition-transform duration-200 ease-out",
             open ? "translate-x-0" : "-translate-x-full"
           )}
           role="dialog"
@@ -182,7 +188,7 @@ export function MobileNav({
                     type="button"
                     onClick={() => persistTheme(key)}
                     className={cn(
-                      "flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-xs font-medium transition-colors",
+                      "flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-xs font-medium transition-all active:scale-95",
                       theme === key ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground"
                     )}
                   >
@@ -196,7 +202,7 @@ export function MobileNav({
             <button
               type="button"
               onClick={handleSignOut}
-              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
             >
               <LogOut className="h-4 w-4 shrink-0" />
               Sign out
