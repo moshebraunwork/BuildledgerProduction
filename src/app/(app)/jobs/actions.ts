@@ -160,7 +160,12 @@ export async function getJobDetail(jobId: string) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "jobs.view")) return { error: "Forbidden" };
 
-  const [jobRows, crewRows, allEmployees, jobItems, catalog, costs, punches, companyRows, invoices, notesRows, filesRows] =
+  // Chat attachments live in job_files tagged with their chat id; only show
+  // them to chat participants (admins see everything). Regular uploads have a
+  // null chat_id and stay visible to anyone with media access.
+  const chatAdmin = user.isSuperadmin || can(user.isSuperadmin, user.permissions, "admin.view");
+
+  const [jobRows, crewRows, allEmployees, jobItems, catalog, costs, punches, companyRows, invoices, filesRows] =
     await Promise.all([
       sql`select * from public.jobs where id = ${jobId} and company_id = ${user.companyId} limit 1`,
       sql`select w.id, w.name, w.role_title, w.pay_rate, w.require_punch_photo
@@ -176,10 +181,23 @@ export async function getJobDetail(jobId: string) {
       sql`select id, number, status, total, created_at, subtotal, tax, line_items,
               customer_name, customer_email, notes, due_date, file_name
           from public.invoices where job_id = ${jobId} order by created_at desc`,
-      sql`select body_html, updated_at, updated_by from public.job_notes where job_id = ${jobId} limit 1`,
-      // Resilient if the job_files table hasn't been migrated yet.
-      sql`select id, name, url, content_type, size_bytes, kind, created_at
-          from public.job_files where job_id = ${jobId} order by created_at desc`.catch(() => [] as any[]),
+      // Resilient if the job_files table (or its chat_id column, migration
+      // 0015) hasn't been migrated yet — fall back to the chat-unaware query,
+      // then to nothing.
+      sql`select f.id, f.name, f.url, f.content_type, f.size_bytes, f.kind, f.created_at, f.chat_id
+          from public.job_files f
+          where f.job_id = ${jobId}
+            and (
+              f.chat_id is null
+              or ${chatAdmin}
+              or exists (select 1 from public.job_chat_participants p
+                          where p.chat_id = f.chat_id and p.user_id = ${user.id})
+            )
+          order by f.created_at desc`
+        .catch(() =>
+          sql`select id, name, url, content_type, size_bytes, kind, created_at
+              from public.job_files where job_id = ${jobId} order by created_at desc`.catch(() => [] as any[])
+        ),
     ]);
 
   if (!jobRows.length) return { error: "Not found" };
@@ -195,7 +213,6 @@ export async function getJobDetail(jobId: string) {
       punches,
       company: companyRows[0] ?? null,
       invoices,
-      notes: notesRows[0] ?? null,
       files: filesRows,
     },
   };

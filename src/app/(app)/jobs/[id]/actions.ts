@@ -369,20 +369,6 @@ export async function adminDeletePunch(punchId: string) {
   return { ok: true };
 }
 
-// ---- job notes ----
-export async function saveJobNotes(jobId: string, bodyHtml: string) {
-  const user = await requireUser("notes.edit");
-  if (!user) return { error: "Forbidden" };
-  if (!(await jobInCompany(jobId, user.companyId))) return { error: "Not found" };
-  await sql`
-    insert into public.job_notes (company_id, job_id, body_html, updated_at, updated_by)
-    values (${user.companyId}, ${jobId}, ${bodyHtml}, now(), ${user.id})
-    on conflict (job_id) do update set body_html = ${bodyHtml}, updated_at = now(), updated_by = ${user.id}
-  `;
-  await auditUser(user, { action: "job_notes.save", entity: "job", entityId: jobId });
-  return { ok: true };
-}
-
 // ---- job files / media ----
 export async function addJobFile(params: {
   jobId: string; name: string; url: string; contentType: string | null; sizeBytes: number | null; kind: string;

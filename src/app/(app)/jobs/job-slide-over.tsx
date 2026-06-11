@@ -8,12 +8,11 @@ import {
   adminCreatePunch, adminUpdatePunch, adminDeletePunchEndTime, adminDeletePunch,
   addJobItem as addJobItemAction, removeJobItem as removeJobItemAction, setJobItemExcluded,
   addJobCost as addJobCostAction, removeJobCost as removeJobCostAction, setJobCostExcluded,
-  generateInvoice as generateInvoiceAction, saveJobNotes,
+  generateInvoice as generateInvoiceAction,
   addJobFile as addJobFileAction, removeJobFile as removeJobFileAction,
 } from "./[id]/actions";
 import { SlideOver } from "@/components/slide-over";
 import { BackButton } from "@/components/back-button";
-import { ResizablePanels } from "@/components/resizable-panels";
 import { JobDetailSkeleton } from "@/components/skeletons";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { Button } from "@/components/ui/button";
@@ -33,13 +32,10 @@ import { fmtMoney, fmtDate, cn } from "@/lib/utils";
 import { computeBilling } from "@/lib/billing";
 import {
   Plus, Trash2, Pencil, Download, Send, Mail, Camera, FileText, MoreVertical, X,
-  CheckCircle, AlertTriangle, Clock, Upload, Paperclip, Play,
+  CheckCircle, AlertTriangle, Upload, Paperclip, Play, MessagesSquare,
 } from "lucide-react";
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import TipTapImage from "@tiptap/extension-image";
-import Link from "@tiptap/extension-link";
-import Placeholder from "@tiptap/extension-placeholder";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { JobChat } from "./job-chat";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 
 // ---- Types ----
@@ -66,10 +62,10 @@ interface FullInvoice {
   line_items: LineItem[]; customer_name: string | null; customer_email: string | null;
   notes: string | null; due_date: string | null; file_name: string | null;
 }
-interface JobNotes { body_html: string; updated_at: string | null; updated_by: string | null; }
 interface JobFile {
   id: string; name: string; url: string; content_type: string | null;
   size_bytes: number | null; kind: string; created_at: string;
+  chat_id?: string | null;
 }
 
 export interface JobSlideOverPerms {
@@ -77,7 +73,6 @@ export interface JobSlideOverPerms {
   punchesView: boolean; punchesManage: boolean;
   mediaView: boolean; mediaManage: boolean;
   invoicesView: boolean; invoicesCreate: boolean; invoicesEdit: boolean; invoicesSend: boolean;
-  notesView: boolean; notesEdit: boolean;
 }
 
 interface JobSlideOverProps {
@@ -114,62 +109,6 @@ function SectionBox({
       </CardHeader>
       <CardContent className={cn("p-4", contentClassName)}>{children}</CardContent>
     </Card>
-  );
-}
-
-// ---- TipTap Notes Editor ----
-function NotesEditor({
-  jobId, initialHtml, canEdit, updatedAt, updatedBy,
-}: {
-  jobId: string; initialHtml: string; canEdit: boolean; updatedAt: string | null; updatedBy: string | null;
-}) {
-  const { toast } = useToast();
-  const [saving, setSaving] = React.useState(false);
-  const [lastSaved, setLastSaved] = React.useState<Date | null>(updatedAt ? new Date(updatedAt) : null);
-  const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      TipTapImage.configure({ inline: false }),
-      Link.configure({ openOnClick: false }),
-      Placeholder.configure({ placeholder: "Add notes for this job…" }),
-    ],
-    content: initialHtml || "",
-    editable: canEdit,
-    onUpdate: ({ editor }) => {
-      if (!canEdit) return;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(async () => {
-        setSaving(true);
-        await saveJobNotes(jobId, editor.getHTML());
-        setSaving(false);
-        setLastSaved(new Date());
-      }, 1500);
-    },
-  });
-
-  React.useEffect(() => {
-    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, []);
-
-  return (
-    <div className="space-y-2">
-      {canEdit && (
-        <div className="flex gap-1 rounded-md border bg-muted/40 p-1 w-fit">
-          <button type="button" onClick={() => editor?.chain().focus().toggleBold().run()} className={`rounded px-2.5 py-1 text-sm font-bold transition-colors hover:bg-background ${editor?.isActive("bold") ? "bg-background shadow-sm" : "text-muted-foreground"}`}>B</button>
-          <button type="button" onClick={() => editor?.chain().focus().toggleItalic().run()} className={`rounded px-2.5 py-1 text-sm italic transition-colors hover:bg-background ${editor?.isActive("italic") ? "bg-background shadow-sm" : "text-muted-foreground"}`}>I</button>
-          <button type="button" onClick={() => editor?.chain().focus().toggleStrike().run()} className={`rounded px-2.5 py-1 text-sm underline transition-colors hover:bg-background ${editor?.isActive("strike") ? "bg-background shadow-sm" : "text-muted-foreground"}`}>U</button>
-        </div>
-      )}
-      <div className="min-h-[200px] rounded-md border bg-background p-3 prose prose-sm max-w-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[180px]">
-        <EditorContent editor={editor} />
-      </div>
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        {saving && <span>Saving…</span>}
-        {!saving && lastSaved && <span>Last saved {lastSaved.toLocaleTimeString()}</span>}
-      </div>
-    </div>
   );
 }
 
@@ -276,7 +215,6 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
   const [punches, setPunches] = React.useState<Punch[]>([]);
   const [company, setCompany] = React.useState<Company | null>(null);
   const [invoices, setInvoices] = React.useState<FullInvoice[]>([]);
-  const [jobNotes, setJobNotes] = React.useState<JobNotes | null>(null);
   const [files, setFiles] = React.useState<JobFile[]>([]);
 
   // Load data when jobId changes
@@ -296,7 +234,6 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
         setJob(d.job); setCrew(d.crew); setAllEmployees(d.allEmployees);
         setJobItems(d.jobItems); setCatalog(d.catalog); setCosts(d.costs);
         setPunches(d.punches); setCompany(d.company); setInvoices(d.invoices);
-        setJobNotes(d.notes);
         setFiles(d.files ?? []);
       })
       .catch(() => {
@@ -785,8 +722,27 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
             </p>
           </div>
 
-          {/* ========== OVERVIEW ========== */}
-          <Card className="shrink-0 overflow-hidden">
+          {/* ========== TABBED SECTIONS — one thing on screen at a time ========== */}
+          <Tabs defaultValue="overview" className="flex flex-col lg:min-h-0 lg:flex-1">
+            <TabsList className="w-full justify-start gap-1 overflow-x-auto">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              {perms.punchesView && (
+                <TabsTrigger value="time">Time{punches.length ? ` · ${punches.length}` : ""}</TabsTrigger>
+              )}
+              {(perms.jobEdit || perms.invoicesView) && (
+                <TabsTrigger value="billing">Billing</TabsTrigger>
+              )}
+              <TabsTrigger value="chat">
+                <MessagesSquare className="mr-1 h-3.5 w-3.5" />Chat
+              </TabsTrigger>
+              {perms.mediaView && (
+                <TabsTrigger value="media">Media{files.length + allMedia.length ? ` · ${files.length + allMedia.length}` : ""}</TabsTrigger>
+              )}
+            </TabsList>
+
+            {/* ========== OVERVIEW ========== */}
+            <TabsContent value="overview" className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+              <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b px-4 py-3">
               <CardTitle className="text-sm font-semibold">Overview</CardTitle>
               <div className="flex flex-wrap items-center justify-end gap-2">
@@ -897,17 +853,12 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                 </div>
               </div>
             </CardContent>
-          </Card>
+              </Card>
+            </TabsContent>
 
-          {/* ========== SIDE-BY-SIDE SECTIONS ========== */}
-          <div className="lg:min-h-0 lg:flex-1">
-            <ResizablePanels
-              storageKey="job-detail-panels"
-              className="lg:h-full"
-              panelClassName="lg:h-full lg:overflow-y-auto lg:pr-1"
-            >
-              {/* ========== CLOCKING ========== */}
-              {perms.punchesView && (
+            {/* ========== TIME / CLOCKING ========== */}
+            {perms.punchesView && (
+              <TabsContent value="time" className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                 <div className="space-y-4">
                   <SectionBox
                     title="Clocking"
@@ -995,9 +946,13 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                     </div>
                   </SectionBox>
                 </div>
-              )}
+              </TabsContent>
+            )}
 
-              {/* ========== ITEMS & COSTS ========== */}
+            {/* ========== BILLING: ITEMS, COSTS & INVOICES ========== */}
+            {(perms.jobEdit || perms.invoicesView) && (
+              <TabsContent value="billing" className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+                <div className="space-y-4">
               {perms.jobEdit && (
                 <div className="space-y-4">
                   <SectionBox
@@ -1172,28 +1127,20 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                 </div>
               )}
 
-              {/* ========== NOTES + FILES & MEDIA ========== */}
-              {(perms.notesView || perms.mediaView) && (
-                <div className="space-y-4">
-                  {perms.notesView && (
-                    <SectionBox
-                      title="Notes"
-                      actions={jobNotes?.updated_at ? (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3" />Edited {new Date(jobNotes.updated_at).toLocaleDateString()}
-                        </span>
-                      ) : undefined}
-                    >
-                      <NotesEditor
-                        jobId={job.id}
-                        initialHtml={jobNotes?.body_html ?? ""}
-                        canEdit={perms.notesEdit}
-                        updatedAt={jobNotes?.updated_at ?? null}
-                        updatedBy={jobNotes?.updated_by ?? null}
-                      />
-                    </SectionBox>
-                  )}
-                  {perms.mediaView && (
+                </div>
+              </TabsContent>
+            )}
+
+            {/* ========== CHAT ========== */}
+            <TabsContent value="chat" className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+              <SectionBox title="Job chat">
+                <JobChat jobId={job.id} onFileShared={(f) => setFiles((arr) => [f as JobFile, ...arr])} />
+              </SectionBox>
+            </TabsContent>
+
+            {/* ========== FILES & MEDIA ========== */}
+            {perms.mediaView && (
+              <TabsContent value="media" className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                     <SectionBox
                       title="Files & Media"
                       count={files.length + allMedia.length}
@@ -1283,11 +1230,9 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                         </>
                       )}
                     </SectionBox>
-                  )}
-                </div>
-              )}
-            </ResizablePanels>
-          </div>
+              </TabsContent>
+            )}
+          </Tabs>
         </div>
       )}
 
