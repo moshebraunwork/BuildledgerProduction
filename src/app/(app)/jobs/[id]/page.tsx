@@ -27,8 +27,6 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         invoicesCreate: c("invoices.create"),
         invoicesEdit: c("invoices.edit"),
         invoicesSend: c("invoices.send"),
-        notesView: c("notes.view"),
-        notesEdit: c("notes.edit"),
       }}
     />
   );

@@ -32,8 +32,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: "punches.manage", label: "Punch in/out & manage punch logs" },
       { key: "media.view", label: "View job media / photos" },
       { key: "media.manage", label: "Upload & delete job media" },
-      { key: "notes.view", label: "View job notes" },
-      { key: "notes.edit", label: "Edit job notes" },
     ],
   },
   {
