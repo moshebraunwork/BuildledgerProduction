@@ -78,26 +78,27 @@ export function MobileTabBar({
         key={t.href}
         href={t.href}
         className={cn(
-          "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-medium transition-colors",
+          "relative flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-medium transition-colors",
           active ? "text-primary" : "text-muted-foreground"
         )}
       >
-        <Icon className="h-5 w-5" />
+        {active && <span className="absolute top-0 h-1 w-6 rounded-full bg-gradient-to-r from-primary to-violet-500" />}
+        <Icon className={cn("h-5 w-5 transition-transform", active && "scale-110")} />
         <span>{t.label}</span>
       </Link>
     );
   };
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t bg-card pb-[env(safe-area-inset-bottom)] md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t bg-card/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur-md md:hidden">
       {left.map(renderItem)}
 
       {/* Center clock action — raised, always visible */}
       <Link href="/clock" className="flex flex-1 flex-col items-center justify-center gap-0.5 pb-1.5 text-[10px] font-medium">
         <span
           className={cn(
-            "-mt-5 flex h-12 w-12 items-center justify-center rounded-full border-4 border-card shadow-lg transition-colors",
-            clockActive ? "bg-primary text-primary-foreground" : "bg-primary/90 text-primary-foreground"
+            "-mt-5 flex h-12 w-12 items-center justify-center rounded-full border-4 border-card shadow-lg ring-2 ring-primary/20 transition-transform active:scale-95",
+            clockActive ? "bg-gradient-to-br from-primary to-violet-500 text-primary-foreground" : "bg-gradient-to-br from-primary/90 to-violet-500/90 text-primary-foreground"
           )}
         >
           <Clock className="h-6 w-6" />

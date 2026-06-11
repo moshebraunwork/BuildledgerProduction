@@ -13,8 +13,8 @@ export function MobileCard({
     <div
       onClick={onClick}
       className={cn(
-        "rounded-lg border bg-card p-3 text-sm shadow-sm transition-colors",
-        onClick && "cursor-pointer active:bg-accent/50",
+        "rounded-xl border bg-card p-3 text-sm shadow-sm transition-all",
+        onClick && "cursor-pointer hover:border-primary/40 active:scale-[0.99] active:bg-accent/50",
         className
       )}
     >
