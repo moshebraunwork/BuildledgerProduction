@@ -33,8 +33,10 @@ import { computeBilling } from "@/lib/billing";
 import {
   Plus, Trash2, Pencil, Download, Send, Mail, Camera, FileText, MoreVertical, X,
   CheckCircle, AlertTriangle, Upload, Paperclip, Play, MessagesSquare,
+  ChevronLeft, Info, Clock, Receipt, Image as ImageIcon,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { JobAvatar } from "@/components/job-avatar";
 import { JobChat } from "./job-chat";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 
@@ -204,6 +206,9 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
   const { toast } = useToast();
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
+  // Active section. Controlled so both the desktop tab strip and the mobile
+  // bottom section bar can drive it.
+  const [tab, setTab] = React.useState("overview");
 
   // ---- loaded data ----
   const [job, setJob] = React.useState<Job | null>(null);
@@ -710,8 +715,43 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
 
       {!loading && job && (
         <div className="flex flex-col gap-4 lg:h-full">
-          {/* ========== HEADER ========== */}
-          <div>
+          {/* ========== PHONE APP BAR — back, identity, overflow actions ========== */}
+          <div className="sticky top-0 z-30 -mx-4 -mt-4 flex items-center gap-1 border-b bg-background/95 px-2 py-2 backdrop-blur-md md:hidden">
+            <button
+              type="button"
+              onClick={() => router.push("/jobs")}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-accent"
+              aria-label="Back to jobs"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <JobAvatar title={job.title} className="h-9 w-9 text-sm" />
+            <div className="min-w-0 flex-1 pl-1.5">
+              <p className="truncate text-[15px] font-semibold leading-tight">{job.title}</p>
+              <p className="truncate text-xs capitalize text-muted-foreground">
+                {job.status}{job.customer_name ? ` · ${job.customer_name}` : ""}
+              </p>
+            </div>
+            {(perms.jobEdit || perms.jobDelete) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  const actions: ContextMenuState["actions"] = [];
+                  if (perms.jobEdit) actions.push({ label: "Edit job", icon: "edit", onClick: () => { setTab("overview"); startEdit(); } });
+                  if (perms.jobEdit && job.status !== "complete") actions.push({ label: "Mark complete", icon: "check", onClick: handleMarkComplete });
+                  if (perms.jobDelete) actions.push({ label: "Delete job", icon: "delete", onClick: () => setDeleteConfirmOpen(true), destructive: true });
+                  setRowCtx({ x: e.clientX, y: e.clientY, actions });
+                }}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-accent"
+                aria-label="Job actions"
+              >
+                <MoreVertical className="h-5 w-5" />
+              </button>
+            )}
+          </div>
+
+          {/* ========== DESKTOP HEADER ========== */}
+          <div className="hidden md:block">
             <BackButton href="/jobs" label="Back to jobs" className="-ml-2 mb-1 text-muted-foreground" />
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">{job.title}</h1>
@@ -723,8 +763,8 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
           </div>
 
           {/* ========== TABBED SECTIONS — one thing on screen at a time ========== */}
-          <Tabs defaultValue="overview" className="flex flex-col lg:min-h-0 lg:flex-1">
-            <TabsList className="w-full justify-start gap-1 overflow-x-auto">
+          <Tabs value={tab} onValueChange={setTab} className="flex flex-col lg:min-h-0 lg:flex-1">
+            <TabsList className="hidden w-full justify-start gap-1 overflow-x-auto md:inline-flex">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               {perms.punchesView && (
                 <TabsTrigger value="time">Time{punches.length ? ` · ${punches.length}` : ""}</TabsTrigger>
@@ -745,7 +785,8 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
               <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b px-4 py-3">
               <CardTitle className="text-sm font-semibold">Overview</CardTitle>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              {/* On phones these live in the app bar's ⋮ menu and the bottom Save bar. */}
+              <div className="hidden flex-wrap items-center justify-end gap-2 md:flex">
                 {perms.jobEdit && !editing && (
                   <Button variant="outline" size="sm" onClick={startEdit}><Pencil className="h-4 w-4 mr-1.5" />Edit</Button>
                 )}
@@ -771,7 +812,7 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {editing ? (
                   <>
-                    <div className="space-y-2"><Label>Title</Label><Input value={editForm.title ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} /></div>
+                    <div className="space-y-2"><Label>Title</Label><Input value={editForm.title ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} className="min-h-[44px]" /></div>
                     <div className="space-y-2">
                       <Label>Place / address</Label>
                       <AddressAutocomplete
@@ -779,25 +820,25 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                         onChange={(v) => setEditForm((f) => ({ ...f, place: v?.place ?? null, lat: v?.lat ?? null, lng: v?.lng ?? null }))}
                       />
                     </div>
-                    <div className="space-y-2"><Label>Customer name</Label><Input value={editForm.customer_name ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, customer_name: e.target.value || null }))} /></div>
-                    <div className="space-y-2"><Label>Customer email</Label><Input type="email" value={editForm.customer_email ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, customer_email: e.target.value || null }))} /></div>
-                    <div className="space-y-2"><Label>Scheduled date</Label><Input type="date" value={editForm.scheduled_date ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, scheduled_date: e.target.value || null }))} /></div>
-                    <div className="space-y-2"><Label>Estimate ($)</Label><Input type="number" value={editForm.estimate ?? 0} onChange={(e) => setEditForm((f) => ({ ...f, estimate: +e.target.value }))} /></div>
+                    <div className="space-y-2"><Label>Customer name</Label><Input value={editForm.customer_name ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, customer_name: e.target.value || null }))} className="min-h-[44px]" /></div>
+                    <div className="space-y-2"><Label>Customer email</Label><Input type="email" value={editForm.customer_email ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, customer_email: e.target.value || null }))} className="min-h-[44px]" /></div>
+                    <div className="space-y-2"><Label>Scheduled date</Label><Input type="date" value={editForm.scheduled_date ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, scheduled_date: e.target.value || null }))} className="min-h-[44px]" /></div>
+                    <div className="space-y-2"><Label>Estimate ($)</Label><Input type="number" value={editForm.estimate ?? 0} onChange={(e) => setEditForm((f) => ({ ...f, estimate: +e.target.value }))} className="min-h-[44px]" /></div>
                     <div className="space-y-2">
                       <Label>Billing mode</Label>
                       <Select value={editForm.billing_mode ?? "itemized"} onValueChange={(v) => setEditForm((f) => ({ ...f, billing_mode: v }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="min-h-[44px]"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="itemized">Itemized</SelectItem>
                           <SelectItem value="hourly">Per hour</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2"><Label>Billing rate ($/hr)</Label><Input type="number" value={editForm.billing_rate ?? ""} placeholder="Company default" onChange={(e) => setEditForm((f) => ({ ...f, billing_rate: e.target.value ? +e.target.value : null }))} /></div>
+                    <div className="space-y-2"><Label>Billing rate ($/hr)</Label><Input type="number" value={editForm.billing_rate ?? ""} placeholder="Company default" onChange={(e) => setEditForm((f) => ({ ...f, billing_rate: e.target.value ? +e.target.value : null }))} className="min-h-[44px]" /></div>
                     <div className="space-y-2">
                       <Label>Status</Label>
                       <Select value={editForm.status ?? "scheduled"} onValueChange={(v) => setEditForm((f) => ({ ...f, status: v }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="min-h-[44px]"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="scheduled">Scheduled</SelectItem>
                           <SelectItem value="active">Active</SelectItem>
@@ -882,7 +923,64 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                       </>
                     }
                   >
-                    <div className="overflow-x-auto">
+                    {/* Phone: tap-friendly punch rows */}
+                    <div className="md:hidden">
+                      {punches.length === 0 && (
+                        <p className="py-8 text-center text-sm text-muted-foreground">No punch logs yet.</p>
+                      )}
+                      <div className="divide-y">
+                        {punches.map((p) => {
+                          const emp = allEmployees.find((e) => e.id === p.employee_id);
+                          const isOpen = !p.ended_at;
+                          const durMs = p.ended_at
+                            ? new Date(p.ended_at).getTime() - new Date(p.started_at).getTime()
+                            : now - new Date(p.started_at).getTime();
+                          const t = (iso: string, withDay = false) =>
+                            new Date(iso).toLocaleString("en-US", withDay
+                              ? { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
+                              : { hour: "numeric", minute: "2-digit" });
+                          return (
+                            <div
+                              key={p.id}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => perms.punchesManage && openEditPunch(p)}
+                              onKeyDown={(e) => { if (e.key === "Enter" && perms.punchesManage) openEditPunch(p); }}
+                              onContextMenu={(e) => perms.punchesManage && punchRowMenu(e, p)}
+                              className="flex w-full items-center gap-3 px-4 py-3 transition-colors active:bg-accent"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <p className="truncate text-sm font-semibold">
+                                    {emp?.name ?? "—"}
+                                    {p.edited_at && <span className="ml-1.5 text-[10px] font-normal text-amber-500">edited</span>}
+                                  </p>
+                                  <span className={cn("shrink-0 text-xs font-medium", isOpen ? "text-emerald-600" : "text-muted-foreground")}>
+                                    {fmtDur(durMs)}{isOpen ? " · open" : ""}
+                                  </span>
+                                </div>
+                                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                  {t(p.started_at, true)} → {p.ended_at ? t(p.ended_at) : "now"}
+                                </p>
+                                {p.note && <p className="mt-0.5 truncate text-xs text-muted-foreground/80">{p.note}</p>}
+                              </div>
+                              {perms.punchesManage && (
+                                <button
+                                  type="button"
+                                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full active:bg-accent"
+                                  onClick={(e) => { e.stopPropagation(); punchRowMenu(e, p); }}
+                                  aria-label="Punch actions"
+                                >
+                                  <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="hidden overflow-x-auto md:block">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -961,7 +1059,39 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                     contentClassName="p-0"
                     actions={<Button size="sm" onClick={() => setItemDialog(true)}><Plus className="h-4 w-4 mr-1" />Add item</Button>}
                   >
-                    <div className="overflow-x-auto">
+                    {/* Phone: one row per item — include-toggle, name, line total */}
+                    <div className="md:hidden">
+                      {jobItems.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No items added.</p>}
+                      <div className="divide-y">
+                        {jobItems.map((it) => (
+                          <div key={it.id} className="flex items-center gap-3 px-4 py-3" onContextMenu={(e) => itemRowMenu(e, it)}>
+                            <Checkbox
+                              checked={!it.excluded}
+                              onCheckedChange={() => toggleItemExcluded(it)}
+                              className="h-5 w-5"
+                              aria-label="Include on invoice"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className={cn("truncate text-sm font-medium", it.excluded && "text-muted-foreground line-through")}>{it.name}</p>
+                              <p className="text-xs text-muted-foreground">{it.qty} × {fmtMoney(it.charge)}</p>
+                            </div>
+                            <span className="shrink-0 text-sm font-semibold">{fmtMoney(it.charge * it.qty)}</span>
+                            {perms.jobEdit && (
+                              <button
+                                type="button"
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full active:bg-accent"
+                                onClick={(e) => { e.stopPropagation(); itemRowMenu(e, it); }}
+                                aria-label="Item actions"
+                              >
+                                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="hidden overflow-x-auto md:block">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -1003,7 +1133,36 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                     contentClassName="p-0"
                     actions={<Button size="sm" onClick={() => setCostDialog(true)}><Plus className="h-4 w-4 mr-1" />Add cost</Button>}
                   >
-                    <div className="overflow-x-auto">
+                    {/* Phone: one row per cost */}
+                    <div className="md:hidden">
+                      {costs.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No one-time costs.</p>}
+                      <div className="divide-y">
+                        {costs.map((c) => (
+                          <div key={c.id} className="flex items-center gap-3 px-4 py-3" onContextMenu={(e) => costRowMenu(e, c)}>
+                            <Checkbox
+                              checked={!c.excluded}
+                              onCheckedChange={() => toggleCostExcluded(c)}
+                              className="h-5 w-5"
+                              aria-label="Include on invoice"
+                            />
+                            <p className={cn("min-w-0 flex-1 truncate text-sm font-medium", c.excluded && "text-muted-foreground line-through")}>{c.label}</p>
+                            <span className="shrink-0 text-sm font-semibold">{fmtMoney(c.charge)}</span>
+                            {perms.jobEdit && (
+                              <button
+                                type="button"
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full active:bg-accent"
+                                onClick={(e) => { e.stopPropagation(); costRowMenu(e, c); }}
+                                aria-label="Cost actions"
+                              >
+                                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="hidden overflow-x-auto md:block">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -1085,9 +1244,43 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                       </div>
                     </div>
 
-                    {/* Invoice list */}
+                    {/* Invoice list — phone: tappable rows */}
                     {invoices.length > 0 && (
-                      <div className="mt-4 overflow-x-auto rounded-md border">
+                      <div className="mt-4 rounded-md border md:hidden">
+                        <div className="divide-y">
+                          {invoices.map((inv) => (
+                            <div
+                              key={inv.id}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => { setViewingInv(inv); setEditingInv(false); setInvDraft(null); }}
+                              onKeyDown={(e) => { if (e.key === "Enter") { setViewingInv(inv); setEditingInv(false); setInvDraft(null); } }}
+                              onContextMenu={(e) => invoiceRowMenu(e, inv)}
+                              className="flex w-full items-center gap-3 px-4 py-3 transition-colors active:bg-accent"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="truncate text-sm font-semibold">{inv.number}</p>
+                                  <Badge variant={invStatusVariant[inv.status] ?? "secondary"} className="shrink-0 capitalize">{inv.status}</Badge>
+                                </div>
+                                <p className="mt-0.5 text-xs text-muted-foreground">{fmtDate(inv.created_at)}</p>
+                              </div>
+                              <span className="shrink-0 text-sm font-semibold">{fmtMoney(inv.total)}</span>
+                              <button
+                                type="button"
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full active:bg-accent"
+                                onClick={(e) => { e.stopPropagation(); invoiceRowMenu(e, inv); }}
+                                aria-label="Invoice actions"
+                              >
+                                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {invoices.length > 0 && (
+                      <div className="mt-4 hidden overflow-x-auto rounded-md border md:block">
                         <Table>
                           <TableHeader>
                             <TableRow>
@@ -1233,6 +1426,52 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
               </TabsContent>
             )}
           </Tabs>
+
+          {/* ========== PHONE BOTTOM BAR ==========
+              Section switcher in thumb reach — replaces the desktop tab strip.
+              While editing it becomes a Save/Cancel bar so the action is never
+              buried above the keyboard. */}
+          {editing ? (
+            <div className="fixed inset-x-0 bottom-0 z-40 flex gap-3 border-t bg-card/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur-xl md:hidden">
+              <Button variant="outline" className="h-12 flex-1 text-base" onClick={() => setEditing(false)}>Cancel</Button>
+              <Button className="h-12 flex-1 text-base" onClick={saveEdit} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+            </div>
+          ) : (
+            <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch rounded-t-2xl border-t bg-card/90 pb-[env(safe-area-inset-bottom)] pt-0.5 shadow-[0_-6px_20px_rgba(0,0,0,0.1)] backdrop-blur-xl md:hidden">
+              {([
+                { v: "overview", label: "Overview", icon: Info, show: true, count: 0 },
+                { v: "time", label: "Time", icon: Clock, show: perms.punchesView, count: punches.length },
+                { v: "billing", label: "Billing", icon: Receipt, show: perms.jobEdit || perms.invoicesView, count: 0 },
+                { v: "chat", label: "Chat", icon: MessagesSquare, show: true, count: 0 },
+                { v: "media", label: "Media", icon: ImageIcon, show: perms.mediaView, count: files.length + allMedia.length },
+              ] as const).filter((s) => s.show).map((s) => {
+                const SIcon = s.icon;
+                const active = tab === s.v;
+                return (
+                  <button
+                    key={s.v}
+                    type="button"
+                    onClick={() => setTab(s.v)}
+                    className={cn(
+                      "relative flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-medium transition-colors",
+                      active ? "text-primary" : "text-muted-foreground"
+                    )}
+                  >
+                    {active && <span className="absolute top-0 h-1 w-8 rounded-full bg-gradient-to-r from-primary to-violet-500 shadow-[0_0_8px_hsl(var(--primary)/0.6)]" />}
+                    <span className={cn("relative rounded-xl px-3 py-0.5 transition-colors", active && "bg-primary/10")}>
+                      <SIcon className={cn("h-5 w-5 transition-transform", active && "scale-110")} />
+                      {s.count > 0 && (
+                        <span className="absolute -right-0.5 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground">
+                          {s.count > 99 ? "99+" : s.count}
+                        </span>
+                      )}
+                    </span>
+                    <span className={cn(active && "font-semibold")}>{s.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          )}
         </div>
       )}
 
