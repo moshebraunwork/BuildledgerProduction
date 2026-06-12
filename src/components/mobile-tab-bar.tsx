@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { can, type PermissionMap } from "@/lib/permissions";
-import { LayoutDashboard, Hammer, Users, Clock, Sparkles } from "lucide-react";
+import { Hammer, FileText, Users, Clock, Sparkles } from "lucide-react";
 import { useAskAi } from "@/components/ask-ai/ask-ai-context";
 
 // App-style bottom tab bar (mobile only). Shows on top-level pages and is
@@ -18,16 +18,17 @@ interface Tab { href: string; label: string; icon: React.ComponentType<{ classNa
 
 const CLOCK_TAB: Tab = { href: "/clock", label: "Clock", icon: Clock, perm: "" };
 
+// No Dashboard on mobile — Jobs is the phone's home screen.
 const SIDE_TABS: Tab[] = [
-  { href: "/dashboard", label: "Home", icon: LayoutDashboard, perm: "dashboard.view" },
-  { href: "/jobs",      label: "Jobs", icon: Hammer,          perm: "jobs.view" },
-  // Clock is injected here (between Jobs and Team) when Ask AI holds the center.
-  { href: "/employees", label: "Team", icon: Users,           perm: "employees.view" },
+  { href: "/jobs",      label: "Jobs",     icon: Hammer,   perm: "jobs.view" },
+  { href: "/invoices",  label: "Invoices", icon: FileText, perm: "invoices.view" },
+  // Clock is injected here (before Team) when Ask AI holds the center.
+  { href: "/employees", label: "Team",     icon: Users,    perm: "employees.view" },
 ];
 
 // Exact routes where the bar is shown. Anything deeper (e.g. /jobs/<id>,
 // /admin/users) hides it.
-const TOP_LEVEL = new Set(["/dashboard", "/jobs", "/invoices", "/inventory", "/employees", "/clock"]);
+const TOP_LEVEL = new Set(["/jobs", "/invoices", "/inventory", "/employees", "/clock"]);
 
 export function MobileTabBar({
   isSuperadmin, permissions,

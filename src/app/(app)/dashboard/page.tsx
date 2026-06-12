@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { fmtMoney, fmtDate, cn } from "@/lib/utils";
 import { Hammer, Boxes, Users, DollarSign, TrendingUp, AlertTriangle } from "lucide-react";
 import { DashboardCharts } from "./dashboard-charts";
+import { MobileRedirect } from "@/components/mobile-redirect";
 
 export default async function DashboardPage() {
   const user = await requirePermission("dashboard.view");
@@ -77,6 +78,8 @@ export default async function DashboardPage() {
 
   return (
     <>
+      {/* The dashboard is desktop-only — phones use the jobs list as home. */}
+      <MobileRedirect to="/jobs" />
       <PageHeader title="Dashboard" description="Your operation at a glance." />
 
       {/* Stat cards */}

@@ -15,12 +15,12 @@ import { SlideOver } from "@/components/slide-over";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
 import { EmptyState } from "@/components/empty-state";
-import { MobileCard, MobileField } from "@/components/mobile-card";
-import { fmtMoney, fmtDate } from "@/lib/utils";
+import { fmtMoney, fmtDate, cn } from "@/lib/utils";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { MapView, type JobPin, type EmpPin } from "@/app/(app)/map/map-view";
-import { Plus, Search, MoreVertical, CheckCircle, Hammer, SlidersHorizontal, Check } from "lucide-react";
+import { Plus, Search, Hammer, SlidersHorizontal, Check, Map as MapIcon, List as ListIcon } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { JobAvatar } from "@/components/job-avatar";
 
 interface Job {
   id: string; title: string; place: string | null; scheduled_date: string | null;
@@ -31,6 +31,25 @@ interface Job {
 const statusVariant: Record<string, "secondary" | "default" | "success"> = {
   scheduled: "secondary", active: "default", complete: "success",
 };
+// Mobile list rows signal status with a colored dot, like presence in a chat app.
+const statusDot: Record<string, string> = {
+  scheduled: "bg-sky-500",
+  active: "bg-emerald-500",
+  complete: "bg-zinc-300 dark:bg-zinc-600",
+};
+// Compact, relative date for the right edge of a mobile row ("Today", "Thu", "May 29").
+function listDate(iso: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(d) - day(new Date())) / 86400000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff === -1) return "Yesterday";
+  if (Math.abs(diff) < 7) return d.toLocaleDateString("en-US", { weekday: "short" });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 const SORT_OPTIONS: { v: string; l: string }[] = [
   { v: "created_desc", l: "Newest first" },
   { v: "created_asc", l: "Oldest first" },
@@ -187,13 +206,60 @@ export function JobsManager({
 
   return (
     <>
-      <PageHeader title="Jobs" description="All jobs, scheduling, status, and locations.">
-        {canEdit && <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New job</Button>}
-      </PageHeader>
+      <div className="hidden md:block">
+        <PageHeader title="Jobs" description="All jobs, scheduling, status, and locations.">
+          {canEdit && <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New job</Button>}
+        </PageHeader>
+      </div>
 
-      {/* Mobile-only List / Map switch (both panes show side-by-side on desktop) */}
+      {/* Phone header — pinned like a messaging app: title, search pill, status chips. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 space-y-3 bg-background px-4 pb-3 pt-4 md:hidden">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight">Jobs</h1>
+          {canMap && (
+            <button
+              type="button"
+              onClick={() => setMobileView((v) => (v === "list" ? "map" : "list"))}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-accent"
+              aria-label={mobileView === "list" ? "Show map" : "Show list"}
+            >
+              {mobileView === "list" ? <MapIcon className="h-5 w-5" /> : <ListIcon className="h-5 w-5" />}
+            </button>
+          )}
+        </div>
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            className="h-11 w-full rounded-full bg-muted pl-11 pr-4 text-[15px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40"
+            placeholder="Search jobs"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+        {mobileView === "list" && (
+          <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {STATUS_FILTERS.map((s) => (
+              <button
+                key={s.v}
+                type="button"
+                onClick={() => setStatusFilter(s.v)}
+                className={cn(
+                  "h-9 shrink-0 rounded-full border px-4 text-sm font-medium transition-colors",
+                  statusFilter === s.v
+                    ? "border-transparent bg-primary text-primary-foreground"
+                    : "border-border bg-card text-muted-foreground active:bg-accent"
+                )}
+              >
+                {s.l}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Tablet-only List / Map switch (both panes show side-by-side on lg+) */}
       {canMap && (
-        <div className="mb-4 flex rounded-md border p-0.5 lg:hidden">
+        <div className="mb-4 hidden rounded-md border p-0.5 md:flex lg:hidden">
           {(["list", "map"] as const).map((v) => (
             <button
               key={v}
@@ -210,7 +276,7 @@ export function JobsManager({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {/* Left: jobs list */}
         <div className={`min-w-0 ${canMap ? `lg:w-1/2 ${mobileView === "map" ? "hidden lg:block" : ""}` : "w-full"}`}>
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 hidden items-center gap-2 md:flex">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input className="pl-8" placeholder="Search jobs…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -308,53 +374,52 @@ export function JobsManager({
         </CardContent>
       </Card>
 
-      {/* Mobile: card list */}
-      <div className="space-y-2 md:hidden">
+      {/* Phone: chat-style list — full-bleed rows, avatar + title + last details,
+          relative date and a status dot on the right. Long-press for actions. */}
+      <div className="-mx-4 md:hidden">
         {filtered.map((j) => (
-          <MobileCard key={j.id} onClick={() => openJob(j)}>
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="truncate font-medium">{j.title}</div>
-                {j.place && <div className="truncate text-xs text-muted-foreground">{j.place}</div>}
+          <div
+            key={j.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => openJob(j)}
+            onKeyDown={(e) => { if (e.key === "Enter") openJob(j); }}
+            onContextMenu={(e) => rowMenu(e, j)}
+            className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 transition-colors active:bg-accent"
+          >
+            <JobAvatar title={j.title} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="truncate text-[15px] font-semibold">{j.title}</p>
+                <span className="shrink-0 text-xs text-muted-foreground">{listDate(j.scheduled_date)}</span>
               </div>
-              <Badge variant={statusVariant[j.status] ?? "secondary"} className="shrink-0 capitalize">{j.status}</Badge>
+              <div className="mt-0.5 flex items-center justify-between gap-2">
+                <p className="truncate text-sm text-muted-foreground">
+                  {[j.customer_name, j.place].filter(Boolean).join(" · ") || <span className="capitalize">{j.status}</span>}
+                </p>
+                <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", statusDot[j.status] ?? "bg-zinc-300")} title={j.status} />
+              </div>
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-              <MobileField label="Customer">{j.customer_name ?? "—"}</MobileField>
-              <MobileField label="Scheduled">{fmtDate(j.scheduled_date)}</MobileField>
-              <MobileField label="Estimate">{fmtMoney(j.estimate)}</MobileField>
-              <MobileField label="Billing"><span className="capitalize">{j.billing_mode}</span></MobileField>
-            </div>
-            <div className="mt-2 flex justify-end">
-              <button
-                type="button"
-                className="rounded p-1.5 hover:bg-accent"
-                onClick={(e) => { e.stopPropagation(); rowMenu(e, j); }}
-                aria-label="More options"
-              >
-                <MoreVertical className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </div>
-          </MobileCard>
+          </div>
         ))}
         {filtered.length === 0 && (
-          <EmptyState
-            icon={Hammer}
-            title={q || statusFilter !== "all" ? "No matching jobs" : "No jobs yet"}
-            description={q || statusFilter !== "all"
-              ? "Try adjusting your search or status filter."
-              : "Create your first job to start tracking time, items and invoices."}
-            action={canEdit && !q && statusFilter === "all"
-              ? <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New job</Button>
-              : undefined}
-          />
+          <div className="px-4">
+            <EmptyState
+              icon={Hammer}
+              title={q || statusFilter !== "all" ? "No matching jobs" : "No jobs yet"}
+              description={q || statusFilter !== "all"
+                ? "Try adjusting your search or status filter."
+                : "Create your first job to start tracking time, items and invoices."}
+            />
+          </div>
         )}
       </div>
         </div>
 
         {/* Right: map of jobs (and employees, if permitted) */}
         {canMap && (
-          <div className={`lg:sticky lg:top-4 lg:w-1/2 ${mobileView === "list" ? "hidden lg:block" : ""}`}>
+          // relative z-0 keeps Leaflet's internal z-indexes under the sticky mobile header
+          <div className={`relative z-0 lg:sticky lg:top-4 lg:w-1/2 ${mobileView === "list" ? "hidden lg:block" : ""}`}>
             <MapView
               jobs={jobPins}
               initialEmployees={employeePins}
@@ -368,11 +433,23 @@ export function JobsManager({
               }}
               highlightJobId={hover?.id ?? null}
               panJobId={hover?.source === "table" ? hover.id : null}
-              className="h-[60vh] w-full lg:h-[calc(100vh-9rem)]"
+              className="h-[calc(100dvh-17rem)] min-h-[20rem] w-full md:h-[60vh] lg:h-[calc(100vh-9rem)]"
             />
           </div>
         )}
       </div>
+
+      {/* Phone: floating "New job" button, kept clear of the bottom tab bar. */}
+      {canEdit && mobileView === "list" && (
+        <button
+          type="button"
+          onClick={() => setCreateOpen(true)}
+          className="fixed bottom-24 right-4 z-30 flex h-14 items-center gap-2 rounded-2xl bg-primary px-5 text-primary-foreground shadow-lg shadow-primary/30 transition-transform active:scale-95 md:hidden"
+        >
+          <Plus className="h-5 w-5" />
+          <span className="text-sm font-semibold">New job</span>
+        </button>
+      )}
 
       <RowContextMenu state={ctx} onClose={() => setCtx(null)} />
       <DeleteConfirm

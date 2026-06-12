@@ -54,7 +54,9 @@ export function MobileNav({
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
 
+  // The dashboard is desktop-only; on phones the jobs list is home.
   const visible = NAV
+    .filter((n) => n.href !== "/dashboard")
     .filter((n) => n.perm === "" || can(isSuperadmin, permissions, n.perm))
     .map((n) =>
       n.children
@@ -79,6 +81,10 @@ export function MobileNav({
       <span className="truncate">{label}</span>
     </Link>
   );
+
+  // Detail screens (e.g. a job) bring their own app bar with a back button,
+  // like a pushed screen in a native app — the global top bar stays out.
+  if (/^\/jobs\/[^/]+$/.test(pathname)) return null;
 
   return (
     <>
