@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronRight, ScrollText, Monitor, Globe } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
-import { MobileCard } from "@/components/mobile-card";
+import { MobileList } from "@/components/mobile-list";
 import { CATEGORY_LABELS, humanizeAction, titleizeKey, fmtVal, describeDevice } from "@/lib/audit-labels";
 
 interface LogEntry {
@@ -238,23 +238,20 @@ export function LogsManager({ initialLogs }: { initialLogs: LogEntry[] }) {
         </CardContent>
       </Card>
 
-      {/* Mobile: card list */}
-      <div className="space-y-2 md:hidden">
+      {/* Mobile: chat-style list (custom rows — logs carry extra detail) */}
+      <MobileList>
         {filtered.map((l) => {
           const device = describeDevice(l.user_agent);
           return (
-            <MobileCard key={l.id}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium">{humanizeAction(l.action)}</div>
-                  <Badge variant="secondary" className="mt-0.5 font-mono text-[10px]">{l.action}</Badge>
-                </div>
-                <span className="shrink-0 text-[11px] text-muted-foreground">{new Date(l.created_at).toLocaleString()}</span>
+            <div key={l.id} className="px-4 py-3.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="truncate text-[15px] font-semibold">{humanizeAction(l.action)}</p>
+                <span className="shrink-0 text-xs text-muted-foreground">{new Date(l.created_at).toLocaleString()}</span>
               </div>
-              <div className="mt-2 text-xs text-muted-foreground">
+              <p className="mt-0.5 truncate text-sm text-muted-foreground">
                 {l.actor_name ? `${l.actor_name} (${l.actor_email ?? "—"})` : (l.actor_email ?? "system")}
                 {l.entity && <> · <span className="capitalize">{l.entity}</span></>}
-              </div>
+              </p>
               {(device || l.ip_address) && (
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
                   {device && <span className="flex items-center gap-1"><Monitor className="h-3 w-3" />{device}</span>}
@@ -262,13 +259,15 @@ export function LogsManager({ initialLogs }: { initialLogs: LogEntry[] }) {
                 </div>
               )}
               {l.detail && <DetailView detail={l.detail} />}
-            </MobileCard>
+            </div>
           );
         })}
         {filtered.length === 0 && (
-          <EmptyState icon={ScrollText} title="No activity yet" description="Sign-ins, sign-outs, and changes will appear here." />
+          <div className="px-4">
+            <EmptyState icon={ScrollText} title="No activity yet" description="Sign-ins, sign-outs, and changes will appear here." />
+          </div>
         )}
-      </div>
+      </MobileList>
     </>
   );
 }

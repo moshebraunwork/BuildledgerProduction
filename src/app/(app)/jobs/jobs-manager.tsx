@@ -20,7 +20,7 @@ import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { MapView, type JobPin, type EmpPin } from "@/app/(app)/map/map-view";
 import { Plus, Search, Hammer, SlidersHorizontal, Check, Map as MapIcon, List as ListIcon } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { JobAvatar } from "@/components/job-avatar";
+import { MobileList, MobileListRow } from "@/components/mobile-list";
 
 interface Job {
   id: string; title: string; place: string | null; scheduled_date: string | null;
@@ -374,33 +374,19 @@ export function JobsManager({
         </CardContent>
       </Card>
 
-      {/* Phone: chat-style list — full-bleed rows, avatar + title + last details,
+      {/* Phone: chat-style list — full-bleed rows with title + last details,
           relative date and a status dot on the right. Long-press for actions. */}
-      <div className="-mx-4 md:hidden">
+      <MobileList>
         {filtered.map((j) => (
-          <div
+          <MobileListRow
             key={j.id}
-            role="button"
-            tabIndex={0}
             onClick={() => openJob(j)}
-            onKeyDown={(e) => { if (e.key === "Enter") openJob(j); }}
             onContextMenu={(e) => rowMenu(e, j)}
-            className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 transition-colors active:bg-accent"
-          >
-            <JobAvatar title={j.title} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline justify-between gap-2">
-                <p className="truncate text-[15px] font-semibold">{j.title}</p>
-                <span className="shrink-0 text-xs text-muted-foreground">{listDate(j.scheduled_date)}</span>
-              </div>
-              <div className="mt-0.5 flex items-center justify-between gap-2">
-                <p className="truncate text-sm text-muted-foreground">
-                  {[j.customer_name, j.place].filter(Boolean).join(" · ") || <span className="capitalize">{j.status}</span>}
-                </p>
-                <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", statusDot[j.status] ?? "bg-zinc-300")} title={j.status} />
-              </div>
-            </div>
-          </div>
+            title={j.title}
+            meta={listDate(j.scheduled_date)}
+            subtitle={[j.customer_name, j.place].filter(Boolean).join(" · ") || <span className="capitalize">{j.status}</span>}
+            trailing={<span className={cn("block h-2.5 w-2.5 rounded-full", statusDot[j.status] ?? "bg-zinc-300")} title={j.status} />}
+          />
         ))}
         {filtered.length === 0 && (
           <div className="px-4">
@@ -413,7 +399,7 @@ export function JobsManager({
             />
           </div>
         )}
-      </div>
+      </MobileList>
         </div>
 
         {/* Right: map of jobs (and employees, if permitted) */}
