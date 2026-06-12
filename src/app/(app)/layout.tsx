@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ApplyTheme } from "@/components/apply-theme";
+import { ScrollReset } from "@/components/scroll-reset";
 import { AskAiProvider } from "@/components/ask-ai/ask-ai-context";
 import { LocationTracker } from "@/components/location/location-tracker";
 
@@ -100,7 +101,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             email={user.email}
             fullName={user.fullName}
           />
-          <main className="flex-1 overflow-y-auto p-4 pb-24 md:bg-gradient-to-br md:from-background md:via-background md:to-primary/5 md:p-8">{children}</main>
+          <main id="app-main" className="flex-1 overflow-y-auto p-4 pb-24 md:bg-gradient-to-br md:from-background md:via-background md:to-primary/5 md:p-8">
+            <ScrollReset targetId="app-main" />
+            {children}
+          </main>
         </div>
         <MobileTabBar isSuperadmin={user.isSuperadmin} permissions={user.permissions} />
       </div>

@@ -36,7 +36,7 @@ import {
   ChevronLeft, Info, Clock, Receipt, Image as ImageIcon,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { JobAvatar } from "@/components/job-avatar";
+import { JobClockCard } from "./job-clock-card";
 import { JobChat } from "./job-chat";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 
@@ -207,8 +207,14 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
   // Active section. Controlled so both the desktop tab strip and the mobile
-  // bottom section bar can drive it.
-  const [tab, setTab] = React.useState("overview");
+  // bottom section bar can drive it. Chat is the job's main screen on phones;
+  // desktop opens on Details.
+  const [tab, setTab] = React.useState("details");
+  React.useEffect(() => {
+    if (window.matchMedia("(max-width: 767px)").matches) setTab("chat");
+  }, []);
+  // Mobile job-details sheet (slides down from the app bar).
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
 
   // ---- loaded data ----
   const [job, setJob] = React.useState<Job | null>(null);
@@ -222,33 +228,30 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
   const [invoices, setInvoices] = React.useState<FullInvoice[]>([]);
   const [files, setFiles] = React.useState<JobFile[]>([]);
 
-  // Load data when jobId changes
-  React.useEffect(() => {
+  // Load (and silently re-load, e.g. after a clock in/out) the job detail.
+  const loadDetail = React.useCallback(async (withSpinner: boolean) => {
     if (!jobId) return;
-    let cancelled = false;
-    setLoading(true);
-    getJobDetail(jobId)
-      .then((res) => {
-        if (cancelled) return;
-        setLoading(false);
-        if (res.error || !res.data) {
-          toast({ title: "Couldn't load job", description: res.error ?? "Not found", variant: "destructive" });
-          return;
-        }
-        const d = res.data as any;
-        setJob(d.job); setCrew(d.crew); setAllEmployees(d.allEmployees);
-        setJobItems(d.jobItems); setCatalog(d.catalog); setCosts(d.costs);
-        setPunches(d.punches); setCompany(d.company); setInvoices(d.invoices);
-        setFiles(d.files ?? []);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setLoading(false);
-        toast({ title: "Couldn't load job", description: "Please try again.", variant: "destructive" });
-      });
-    return () => { cancelled = true; };
+    if (withSpinner) setLoading(true);
+    try {
+      const res = await getJobDetail(jobId);
+      if (res.error || !res.data) {
+        toast({ title: "Couldn't load job", description: res.error ?? "Not found", variant: "destructive" });
+        return;
+      }
+      const d = res.data as any;
+      setJob(d.job); setCrew(d.crew); setAllEmployees(d.allEmployees);
+      setJobItems(d.jobItems); setCatalog(d.catalog); setCosts(d.costs);
+      setPunches(d.punches); setCompany(d.company); setInvoices(d.invoices);
+      setFiles(d.files ?? []);
+    } catch {
+      toast({ title: "Couldn't load job", description: "Please try again.", variant: "destructive" });
+    } finally {
+      if (withSpinner) setLoading(false);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
+
+  React.useEffect(() => { loadDetail(true); }, [loadDetail]);
 
   // ---- Overview edit state ----
   const [editing, setEditing] = React.useState(false);
@@ -292,12 +295,17 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
     }
   }
 
-  async function handleMarkComplete() {
+  async function changeStatus(status: string) {
     if (!job) return;
-    await setJobStatus(job.id, "complete");
-    setJob((j) => j ? { ...j, status: "complete" } : j);
+    const res = await setJobStatus(job.id, status);
+    if ((res as any)?.error) return toast({ title: "Failed", description: (res as any).error, variant: "destructive" });
+    setJob((j) => j ? { ...j, status } : j);
     router.refresh();
-    toast({ title: "Job marked complete", variant: "success" });
+    toast({ title: `Job marked ${status}`, variant: "success" });
+  }
+
+  async function handleMarkComplete() {
+    await changeStatus("complete");
   }
 
   async function handleDelete() {
@@ -709,6 +717,62 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
     draft: "secondary", sent: "default", paid: "success",
   };
 
+  // The job's field grid (view or edit form). Rendered in the desktop Details
+  // tab and in the mobile slide-down details sheet.
+  const detailsFields = job && (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {editing ? (
+        <>
+          <div className="space-y-2"><Label>Title</Label><Input value={editForm.title ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} className="min-h-[44px]" /></div>
+          <div className="space-y-2">
+            <Label>Place / address</Label>
+            <AddressAutocomplete
+              value={editForm.place ? { place: editForm.place, lat: editForm.lat ?? null, lng: editForm.lng ?? null } : null}
+              onChange={(v) => setEditForm((f) => ({ ...f, place: v?.place ?? null, lat: v?.lat ?? null, lng: v?.lng ?? null }))}
+            />
+          </div>
+          <div className="space-y-2"><Label>Customer name</Label><Input value={editForm.customer_name ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, customer_name: e.target.value || null }))} className="min-h-[44px]" /></div>
+          <div className="space-y-2"><Label>Customer email</Label><Input type="email" value={editForm.customer_email ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, customer_email: e.target.value || null }))} className="min-h-[44px]" /></div>
+          <div className="space-y-2"><Label>Scheduled date</Label><Input type="date" value={editForm.scheduled_date ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, scheduled_date: e.target.value || null }))} className="min-h-[44px]" /></div>
+          <div className="space-y-2"><Label>Estimate ($)</Label><Input type="number" value={editForm.estimate ?? 0} onChange={(e) => setEditForm((f) => ({ ...f, estimate: +e.target.value }))} className="min-h-[44px]" /></div>
+          <div className="space-y-2">
+            <Label>Billing mode</Label>
+            <Select value={editForm.billing_mode ?? "itemized"} onValueChange={(v) => setEditForm((f) => ({ ...f, billing_mode: v }))}>
+              <SelectTrigger className="min-h-[44px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="itemized">Itemized</SelectItem>
+                <SelectItem value="hourly">Per hour</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2"><Label>Billing rate ($/hr)</Label><Input type="number" value={editForm.billing_rate ?? ""} placeholder="Company default" onChange={(e) => setEditForm((f) => ({ ...f, billing_rate: e.target.value ? +e.target.value : null }))} className="min-h-[44px]" /></div>
+          <div className="space-y-2">
+            <Label>Status</Label>
+            <Select value={editForm.status ?? "scheduled"} onValueChange={(v) => setEditForm((f) => ({ ...f, status: v }))}>
+              <SelectTrigger className="min-h-[44px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="scheduled">Scheduled</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="complete">Complete</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </>
+      ) : (
+        <>
+          <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Title</p><p className="font-medium mt-1">{job.title}</p></div>
+          <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Location</p><p className="mt-1">{job.place ?? "—"}</p></div>
+          <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Customer</p><p className="mt-1">{job.customer_name ?? "—"}{job.customer_email && <span className="block text-sm text-muted-foreground">{job.customer_email}</span>}</p></div>
+          <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Scheduled</p><p className="mt-1">{fmtDate(job.scheduled_date)}</p></div>
+          <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Estimate</p><p className="mt-1">{fmtMoney(job.estimate)}</p></div>
+          <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Billing</p><p className="mt-1 capitalize">{job.billing_mode}{job.billing_rate ? ` · ${fmtMoney(job.billing_rate)}/hr` : ""}</p></div>
+          <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Status</p><Badge variant={statusVariant[job.status] ?? "secondary"} className="capitalize mt-1">{job.status}</Badge></div>
+          <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Created</p><p className="mt-1 text-sm">{fmtDate(job.created_at)}</p></div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <>
       {loading && <JobDetailSkeleton />}
@@ -725,20 +789,32 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
             >
               <ChevronLeft className="h-6 w-6" />
             </button>
-            <JobAvatar title={job.title} className="h-9 w-9 text-sm" />
-            <div className="min-w-0 flex-1 pl-1.5">
+            <div className="min-w-0 flex-1 pl-1">
               <p className="truncate text-[15px] font-semibold leading-tight">{job.title}</p>
               <p className="truncate text-xs capitalize text-muted-foreground">
                 {job.status}{job.customer_name ? ` · ${job.customer_name}` : ""}
               </p>
             </div>
+            {/* Job details live behind this button (slide-down sheet), not in the section bar. */}
+            <button
+              type="button"
+              onClick={() => setDetailsOpen(true)}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-accent"
+              aria-label="Job details"
+            >
+              <Info className="h-5 w-5" />
+            </button>
             {(perms.jobEdit || perms.jobDelete) && (
               <button
                 type="button"
                 onClick={(e) => {
                   const actions: ContextMenuState["actions"] = [];
-                  if (perms.jobEdit) actions.push({ label: "Edit job", icon: "edit", onClick: () => { setTab("overview"); startEdit(); } });
-                  if (perms.jobEdit && job.status !== "complete") actions.push({ label: "Mark complete", icon: "check", onClick: handleMarkComplete });
+                  if (perms.jobEdit) {
+                    actions.push({ label: "Edit job details", icon: "edit", onClick: () => { setDetailsOpen(true); startEdit(); } });
+                    for (const s of ["scheduled", "active", "complete"].filter((x) => x !== job.status)) {
+                      actions.push({ label: `Mark ${s}`, icon: "check", onClick: () => changeStatus(s) });
+                    }
+                  }
                   if (perms.jobDelete) actions.push({ label: "Delete job", icon: "delete", onClick: () => setDeleteConfirmOpen(true), destructive: true });
                   setRowCtx({ x: e.clientX, y: e.clientY, actions });
                 }}
@@ -765,10 +841,8 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
           {/* ========== TABBED SECTIONS — one thing on screen at a time ========== */}
           <Tabs value={tab} onValueChange={setTab} className="flex flex-col lg:min-h-0 lg:flex-1">
             <TabsList className="hidden w-full justify-start gap-1 overflow-x-auto md:inline-flex">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              {perms.punchesView && (
-                <TabsTrigger value="time">Time{punches.length ? ` · ${punches.length}` : ""}</TabsTrigger>
-              )}
+              <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="time">Time{punches.length ? ` · ${punches.length}` : ""}</TabsTrigger>
               {(perms.jobEdit || perms.invoicesView) && (
                 <TabsTrigger value="billing">Billing</TabsTrigger>
               )}
@@ -780,13 +854,12 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
               )}
             </TabsList>
 
-            {/* ========== OVERVIEW ========== */}
-            <TabsContent value="overview" className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            {/* ========== DETAILS (desktop tab; phones use the slide-down sheet) ========== */}
+            <TabsContent value="details" className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
               <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b px-4 py-3">
-              <CardTitle className="text-sm font-semibold">Overview</CardTitle>
-              {/* On phones these live in the app bar's ⋮ menu and the bottom Save bar. */}
-              <div className="hidden flex-wrap items-center justify-end gap-2 md:flex">
+              <CardTitle className="text-sm font-semibold">Job details</CardTitle>
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 {perms.jobEdit && !editing && (
                   <Button variant="outline" size="sm" onClick={startEdit}><Pencil className="h-4 w-4 mr-1.5" />Edit</Button>
                 )}
@@ -808,119 +881,31 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                 )}
               </div>
             </CardHeader>
-            <CardContent className="space-y-4 p-4">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {editing ? (
-                  <>
-                    <div className="space-y-2"><Label>Title</Label><Input value={editForm.title ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} className="min-h-[44px]" /></div>
-                    <div className="space-y-2">
-                      <Label>Place / address</Label>
-                      <AddressAutocomplete
-                        value={editForm.place ? { place: editForm.place, lat: editForm.lat ?? null, lng: editForm.lng ?? null } : null}
-                        onChange={(v) => setEditForm((f) => ({ ...f, place: v?.place ?? null, lat: v?.lat ?? null, lng: v?.lng ?? null }))}
-                      />
-                    </div>
-                    <div className="space-y-2"><Label>Customer name</Label><Input value={editForm.customer_name ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, customer_name: e.target.value || null }))} className="min-h-[44px]" /></div>
-                    <div className="space-y-2"><Label>Customer email</Label><Input type="email" value={editForm.customer_email ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, customer_email: e.target.value || null }))} className="min-h-[44px]" /></div>
-                    <div className="space-y-2"><Label>Scheduled date</Label><Input type="date" value={editForm.scheduled_date ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, scheduled_date: e.target.value || null }))} className="min-h-[44px]" /></div>
-                    <div className="space-y-2"><Label>Estimate ($)</Label><Input type="number" value={editForm.estimate ?? 0} onChange={(e) => setEditForm((f) => ({ ...f, estimate: +e.target.value }))} className="min-h-[44px]" /></div>
-                    <div className="space-y-2">
-                      <Label>Billing mode</Label>
-                      <Select value={editForm.billing_mode ?? "itemized"} onValueChange={(v) => setEditForm((f) => ({ ...f, billing_mode: v }))}>
-                        <SelectTrigger className="min-h-[44px]"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="itemized">Itemized</SelectItem>
-                          <SelectItem value="hourly">Per hour</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2"><Label>Billing rate ($/hr)</Label><Input type="number" value={editForm.billing_rate ?? ""} placeholder="Company default" onChange={(e) => setEditForm((f) => ({ ...f, billing_rate: e.target.value ? +e.target.value : null }))} className="min-h-[44px]" /></div>
-                    <div className="space-y-2">
-                      <Label>Status</Label>
-                      <Select value={editForm.status ?? "scheduled"} onValueChange={(v) => setEditForm((f) => ({ ...f, status: v }))}>
-                        <SelectTrigger className="min-h-[44px]"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="scheduled">Scheduled</SelectItem>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="complete">Complete</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Title</p><p className="font-medium mt-1">{job.title}</p></div>
-                    <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Location</p><p className="mt-1">{job.place ?? "—"}</p></div>
-                    <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Customer</p><p className="mt-1">{job.customer_name ?? "—"}{job.customer_email && <span className="block text-sm text-muted-foreground">{job.customer_email}</span>}</p></div>
-                    <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Scheduled</p><p className="mt-1">{fmtDate(job.scheduled_date)}</p></div>
-                    <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Estimate</p><p className="mt-1">{fmtMoney(job.estimate)}</p></div>
-                    <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Billing</p><p className="mt-1 capitalize">{job.billing_mode}{job.billing_rate ? ` · ${fmtMoney(job.billing_rate)}/hr` : ""}</p></div>
-                    <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Status</p><Badge variant={statusVariant[job.status] ?? "secondary"} className="capitalize mt-1">{job.status}</Badge></div>
-                    <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Created</p><p className="mt-1 text-sm">{fmtDate(job.created_at)}</p></div>
-                  </>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Crew inline list */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Crew</p>
-                  {perms.jobEdit && editing && availableToAdd.length > 0 && (
-                    <Select onValueChange={addCrew}>
-                      <SelectTrigger className="w-48 h-8"><SelectValue placeholder="Add crew member" /></SelectTrigger>
-                      <SelectContent>
-                        {availableToAdd.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-                {crew.length === 0 && <p className="text-sm text-muted-foreground">No crew assigned.</p>}
-                <div className="space-y-1">
-                  {crew.map((e) => (
-                    <div key={e.id} className="flex items-center justify-between rounded-md border px-3 py-2">
-                      <div>
-                        <span className="text-sm font-medium">{e.name}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{e.role_title ?? "Crew"}</span>
-                      </div>
-                      {perms.jobEdit && editing && (
-                        <Button size="sm" variant="ghost" onClick={() => removeCrew(e.id)}>
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <CardContent className="p-4">
+              {detailsFields}
             </CardContent>
               </Card>
             </TabsContent>
 
-            {/* ========== TIME / CLOCKING ========== */}
-            {perms.punchesView && (
-              <TabsContent value="time" className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            {/* ========== TIME: MY SHIFT, CLOCKING & CREW ========== */}
+            <TabsContent value="time" className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                 <div className="space-y-4">
+                  {/* Workers clock in/out right here when they arrive and leave. */}
+                  <JobClockCard
+                    jobId={job.id}
+                    jobRequiresPhoto={job.require_punch_photo}
+                    onPunchChange={() => loadDetail(false)}
+                  />
+
+                  {perms.punchesView && (
                   <SectionBox
                     title="Clocking"
                     count={punches.length}
                     contentClassName="p-0"
                     actions={
-                      <>
-                        {/* Personal self clock-in (mobile only). Opens the clock
-                            flow locked to this job — available to everyone. */}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="md:hidden"
-                          onClick={() => router.push(`/clock?jobId=${job.id}`)}
-                        >
-                          <Play className="h-4 w-4 mr-1.5" />Clock in
-                        </Button>
-                        {perms.punchesManage && (
-                          <Button size="sm" onClick={openAddPunch}><Plus className="h-4 w-4 mr-1.5" />Add log</Button>
-                        )}
-                      </>
+                      perms.punchesManage && (
+                        <Button size="sm" onClick={openAddPunch}><Plus className="h-4 w-4 mr-1.5" />Add log</Button>
+                      )
                     }
                   >
                     {/* Phone: tap-friendly punch rows */}
@@ -1043,9 +1028,47 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                       </Table>
                     </div>
                   </SectionBox>
+                  )}
+
+                  {/* ---- Crew — lives under Time, editable without entering edit mode ---- */}
+                  <SectionBox
+                    title="Crew"
+                    count={crew.length}
+                    actions={perms.jobEdit && availableToAdd.length > 0 ? (
+                      <Select value="" onValueChange={addCrew}>
+                        <SelectTrigger className="h-10 w-44 md:h-8">
+                          <SelectValue placeholder="Add member" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableToAdd.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    ) : undefined}
+                  >
+                    {crew.length === 0 && <p className="text-sm text-muted-foreground">No crew assigned.</p>}
+                    <div className="space-y-1.5">
+                      {crew.map((e) => (
+                        <div key={e.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5">
+                          <div className="min-w-0 truncate">
+                            <span className="text-sm font-medium">{e.name}</span>
+                            <span className="ml-2 text-xs text-muted-foreground">{e.role_title ?? "Crew"}</span>
+                          </div>
+                          {perms.jobEdit && (
+                            <button
+                              type="button"
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent active:bg-accent"
+                              onClick={() => removeCrew(e.id)}
+                              aria-label={`Remove ${e.name}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </SectionBox>
                 </div>
               </TabsContent>
-            )}
 
             {/* ========== BILLING: ITEMS, COSTS & INVOICES ========== */}
             {(perms.jobEdit || perms.invoicesView) && (
@@ -1324,11 +1347,16 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
               </TabsContent>
             )}
 
-            {/* ========== CHAT ========== */}
+            {/* ========== CHAT — the job's main screen on phones ========== */}
             <TabsContent value="chat" className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-              <SectionBox title="Job chat">
-                <JobChat jobId={job.id} onFileShared={(f) => setFiles((arr) => [f as JobFile, ...arr])} />
-              </SectionBox>
+              <div className="md:rounded-xl md:border md:bg-card md:text-card-foreground md:shadow">
+                <div className="hidden border-b px-4 py-3 md:block">
+                  <h3 className="text-sm font-semibold">Job chat</h3>
+                </div>
+                <div className="md:p-4">
+                  <JobChat jobId={job.id} onFileShared={(f) => setFiles((arr) => [f as JobFile, ...arr])} />
+                </div>
+              </div>
             </TabsContent>
 
             {/* ========== FILES & MEDIA ========== */}
@@ -1429,20 +1457,12 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
 
           {/* ========== PHONE BOTTOM BAR ==========
               Section switcher in thumb reach — replaces the desktop tab strip.
-              While editing it becomes a Save/Cancel bar so the action is never
-              buried above the keyboard. */}
-          {editing ? (
-            <div className="fixed inset-x-0 bottom-0 z-40 flex gap-3 border-t bg-card/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur-xl md:hidden">
-              <Button variant="outline" className="h-12 flex-1 text-base" onClick={() => setEditing(false)}>Cancel</Button>
-              <Button className="h-12 flex-1 text-base" onClick={saveEdit} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
-            </div>
-          ) : (
+              Chat leads; job details live behind the app bar's info button. */}
             <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch rounded-t-2xl border-t bg-card/90 pb-[env(safe-area-inset-bottom)] pt-0.5 shadow-[0_-6px_20px_rgba(0,0,0,0.1)] backdrop-blur-xl md:hidden">
               {([
-                { v: "overview", label: "Overview", icon: Info, show: true, count: 0 },
-                { v: "time", label: "Time", icon: Clock, show: perms.punchesView, count: punches.length },
-                { v: "billing", label: "Billing", icon: Receipt, show: perms.jobEdit || perms.invoicesView, count: 0 },
                 { v: "chat", label: "Chat", icon: MessagesSquare, show: true, count: 0 },
+                { v: "time", label: "Time", icon: Clock, show: true, count: punches.length },
+                { v: "billing", label: "Billing", icon: Receipt, show: perms.jobEdit || perms.invoicesView, count: 0 },
                 { v: "media", label: "Media", icon: ImageIcon, show: perms.mediaView, count: files.length + allMedia.length },
               ] as const).filter((s) => s.show).map((s) => {
                 const SIcon = s.icon;
@@ -1471,7 +1491,58 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
                 );
               })}
             </nav>
-          )}
+
+          {/* ========== PHONE DETAILS SHEET ==========
+              Slides down from the app bar. Shows the job's fields; "Edit job
+              details" (here or in the ⋮ menu) switches it to the edit form with
+              a pinned Save bar. */}
+          <div
+            className={cn("fixed inset-0 z-50 md:hidden", detailsOpen ? "" : "pointer-events-none")}
+            aria-hidden={!detailsOpen}
+          >
+            <div
+              className={cn(
+                "absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-200",
+                detailsOpen ? "opacity-100" : "opacity-0"
+              )}
+              onClick={() => { setDetailsOpen(false); setEditing(false); }}
+            />
+            <div
+              className={cn(
+                "absolute inset-x-0 top-0 flex max-h-[88dvh] flex-col rounded-b-3xl border-b bg-background shadow-xl transition-transform duration-200 ease-out",
+                detailsOpen ? "translate-y-0" : "-translate-y-full"
+              )}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <h2 className="text-base font-semibold">Job details</h2>
+                <button
+                  type="button"
+                  onClick={() => { setDetailsOpen(false); setEditing(false); }}
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground active:bg-accent"
+                  aria-label="Close details"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">{detailsFields}</div>
+              {perms.jobEdit && (
+                <div className="border-t p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+                  {editing ? (
+                    <div className="flex gap-3">
+                      <Button variant="outline" className="h-12 flex-1 text-base" onClick={() => setEditing(false)}>Cancel</Button>
+                      <Button className="h-12 flex-1 text-base" onClick={saveEdit} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+                    </div>
+                  ) : (
+                    <Button variant="outline" className="h-12 w-full text-base" onClick={startEdit}>
+                      <Pencil className="mr-2 h-4 w-4" />Edit job details
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

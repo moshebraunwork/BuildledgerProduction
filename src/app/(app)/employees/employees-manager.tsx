@@ -16,9 +16,9 @@ import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { MapView, type EmpPin } from "@/app/(app)/map/map-view";
-import { Plus, Camera, Mail, CheckCircle2, Search, Users, MoreVertical, SlidersHorizontal, Check, Shield } from "lucide-react";
+import { Plus, Camera, Mail, CheckCircle2, Search, Users, SlidersHorizontal, Check, Shield } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
-import { MobileCard, MobileField } from "@/components/mobile-card";
+import { MobileList, MobileListRow, MobileRowMenu } from "@/components/mobile-list";
 import { createEmployee, updateEmployee, deleteEmployee, inviteEmployee, setEmployeeAccess } from "./actions";
 
 interface Employee {
@@ -352,45 +352,31 @@ export function EmployeesManager({
             </CardContent>
           </Card>
 
-          {/* Mobile: card list */}
-          <div className="space-y-2 md:hidden">
+          {/* Mobile: chat-style list */}
+          <MobileList>
             {filtered.map((w) => (
-              <MobileCard key={w.id} onClick={() => startEdit(w)}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">{w.name}</div>
-                    <div className="truncate text-xs text-muted-foreground">{w.role_title ?? "Crew"}</div>
-                  </div>
-                  <div className="shrink-0">{accessBadge(w)}</div>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                  <MobileField label="Pay">{fmtMoney(w.pay_rate)}/hr</MobileField>
-                  <MobileField label="Phone">{w.phone ?? "—"}</MobileField>
-                </div>
-                {w.require_punch_photo && (
-                  <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><Camera className="h-3 w-3" /> Punch photo required</div>
-                )}
-                <div className="mt-2 flex justify-end">
-                  <button
-                    type="button"
-                    className="rounded p-1.5 hover:bg-accent"
-                    onClick={(e) => { e.stopPropagation(); rowMenu(e, w); }}
-                    aria-label="More options"
-                  >
-                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                </div>
-              </MobileCard>
+              <MobileListRow
+                key={w.id}
+                onClick={() => startEdit(w)}
+                onContextMenu={(e) => { e.preventDefault(); rowMenu(e, w); }}
+                title={w.name}
+                meta={`${fmtMoney(w.pay_rate)}/hr`}
+                subtitle={[w.role_title ?? "Crew", w.phone].filter(Boolean).join(" · ")}
+                trailing={accessBadge(w)}
+                actions={<MobileRowMenu onOpen={(e) => rowMenu(e, w)} />}
+              />
             ))}
             {filtered.length === 0 && (
-              <EmptyState
-                icon={Users}
-                title={q || statusFilter !== "all" ? "No matching people" : "No team members yet"}
-                description={q || statusFilter !== "all" ? "Try a different search or filter." : "Add your crew to assign them to jobs, track hours, and give app access."}
-                action={canEdit && !q && statusFilter === "all" ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add team member</Button> : undefined}
-              />
+              <div className="px-4">
+                <EmptyState
+                  icon={Users}
+                  title={q || statusFilter !== "all" ? "No matching people" : "No team members yet"}
+                  description={q || statusFilter !== "all" ? "Try a different search or filter." : "Add your crew to assign them to jobs, track hours, and give app access."}
+                  action={canEdit && !q && statusFilter === "all" ? <Button size="sm" onClick={startNew}><Plus className="h-4 w-4" /> Add team member</Button> : undefined}
+                />
+              </div>
             )}
-          </div>
+          </MobileList>
         </div>
 
         {/* Right: map of team locations */}

@@ -225,7 +225,7 @@ export function JobChat({
   // ---- open thread ----
   if (openChat) {
     return (
-      <div className="flex h-[min(65vh,560px)] flex-col">
+      <div className="flex h-[calc(100dvh-14rem)] flex-col md:h-[min(65vh,560px)]">
         {/* Thread header */}
         <div className="flex items-center gap-2 border-b pb-2">
           <Button variant="ghost" size="sm" className="-ml-2" onClick={() => { setOpenChat(null); refreshChats(); }}>
@@ -343,7 +343,7 @@ export function JobChat({
             </label>
           ))}
         </div>
-        <Button className="w-full" disabled={creating || selected.size === 0} onClick={startChat}>
+        <Button className="h-11 w-full" disabled={creating || selected.size === 0} onClick={startChat}>
           {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessagesSquare className="mr-2 h-4 w-4" />}
           Open chat
         </Button>
@@ -355,9 +355,12 @@ export function JobChat({
   }
 
   // ---- chat list ----
+  // On phones this is the job's main screen: full-bleed messaging-style rows
+  // plus a floating "New chat" button (mirrors the jobs list's "New job").
+  // Desktop keeps the inline button and bordered rows.
   return (
-    <div className="space-y-2">
-      <Button variant="outline" size="sm" className="w-full" onClick={openNewChat}>
+    <div className="md:space-y-2">
+      <Button variant="outline" size="sm" className="hidden w-full md:flex" onClick={openNewChat}>
         <Plus className="mr-1.5 h-4 w-4" />New chat
       </Button>
       {loadingChats && (
@@ -369,30 +372,42 @@ export function JobChat({
           <p>No chats on this job yet.</p>
         </div>
       )}
-      {chats.map((c) => (
-        <button
-          key={c.id}
-          type="button"
-          onClick={() => setOpenChat(c)}
-          className="flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-accent/50"
-        >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/15 to-violet-500/15">
-            <MessagesSquare className="h-4 w-4 text-primary" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
-              <p className="truncate text-sm font-medium">{chatTitle(c)}</p>
-              {c.lastMessage && <span className="shrink-0 text-[10px] text-muted-foreground">{fmtWhen(c.lastMessage.createdAt)}</span>}
+      <div className="-mx-4 md:mx-0 md:space-y-2">
+        {chats.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => setOpenChat(c)}
+            className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-accent md:rounded-lg md:border md:px-3 md:py-2.5 md:hover:bg-accent/50"
+          >
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/15 to-violet-500/15 md:h-9 md:w-9">
+              <MessagesSquare className="h-5 w-5 text-primary md:h-4 md:w-4" />
             </div>
-            <p className="truncate text-xs text-muted-foreground">
-              {c.lastMessage
-                ? `${c.lastMessage.sender ? c.lastMessage.sender + ": " : ""}${c.lastMessage.body || c.lastMessage.fileName || "Attachment"}`
-                : "No messages yet"}
-              {!c.isParticipant && <span className="ml-1.5 text-amber-600 dark:text-amber-400">· admin view</span>}
-            </p>
-          </div>
-        </button>
-      ))}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="truncate text-[15px] font-semibold md:text-sm md:font-medium">{chatTitle(c)}</p>
+                {c.lastMessage && <span className="shrink-0 text-xs text-muted-foreground md:text-[10px]">{fmtWhen(c.lastMessage.createdAt)}</span>}
+              </div>
+              <p className="truncate text-sm text-muted-foreground md:text-xs">
+                {c.lastMessage
+                  ? `${c.lastMessage.sender ? c.lastMessage.sender + ": " : ""}${c.lastMessage.body || c.lastMessage.fileName || "Attachment"}`
+                  : "No messages yet"}
+                {!c.isParticipant && <span className="ml-1.5 text-amber-600 dark:text-amber-400">· admin view</span>}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* Phone: floating new-chat button */}
+      <button
+        type="button"
+        onClick={openNewChat}
+        className="fixed bottom-24 right-4 z-30 flex h-14 items-center gap-2 rounded-2xl bg-primary px-5 text-primary-foreground shadow-lg shadow-primary/30 transition-transform active:scale-95 md:hidden"
+      >
+        <Plus className="h-5 w-5" />
+        <span className="text-sm font-semibold">New chat</span>
+      </button>
     </div>
   );
 }

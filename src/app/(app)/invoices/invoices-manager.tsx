@@ -15,9 +15,9 @@ import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/componen
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { fmtMoney, fmtDate } from "@/lib/utils";
-import { Download, Send, Printer, Plus, Trash2, Mail, X, Search, ArrowUpDown, ArrowUp, ArrowDown, MoreVertical, Pencil, Eye, FileText } from "lucide-react";
+import { Download, Send, Printer, Plus, Trash2, Mail, X, Search, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Eye, FileText } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
-import { MobileCard, MobileField } from "@/components/mobile-card";
+import { MobileList, MobileListRow, MobileRowMenu } from "@/components/mobile-list";
 import { updateInvoice, deleteInvoice, markInvoicePaid, markInvoiceUnpaid } from "./actions";
 
 interface LineItem { name: string; qty?: number; amount: number; }
@@ -499,46 +499,36 @@ ${inv.notes ? `<div class="notes"><div class="sect">Notes</div><p>${inv.notes}</
         </CardContent>
       </Card>
 
-      {/* Mobile: card list */}
-      <div className="space-y-2 md:hidden">
+      {/* Mobile: chat-style list */}
+      <MobileList>
         {filtered.map((inv) => (
-          <MobileCard key={inv.id} onClick={() => openViewing(inv)}>
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="truncate font-medium">{inv.number}</div>
-                <div className="truncate text-xs text-muted-foreground">{inv.customer_name ?? "No customer"}</div>
-              </div>
-              <Badge variant={inv.status === "paid" ? "success" : inv.status === "sent" ? "default" : "secondary"} className="shrink-0 capitalize">
+          <MobileListRow
+            key={inv.id}
+            onClick={() => openViewing(inv)}
+            onContextMenu={(e) => { e.preventDefault(); rowMenu(e, inv); }}
+            title={inv.number}
+            meta={fmtDate(inv.created_at)}
+            subtitle={`${inv.customer_name ?? "No customer"} · ${fmtMoney(inv.total)}`}
+            trailing={
+              <Badge variant={inv.status === "paid" ? "success" : inv.status === "sent" ? "default" : "secondary"} className="capitalize">
                 {inv.status}
               </Badge>
-            </div>
-            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-              <MobileField label="Total">{fmtMoney(inv.total)}</MobileField>
-              <MobileField label="Created">{fmtDate(inv.created_at)}</MobileField>
-              <MobileField label="Due">{inv.due_date ? fmtDate(inv.due_date) : "—"}</MobileField>
-            </div>
-            <div className="mt-2 flex justify-end">
-              <button
-                type="button"
-                className="rounded p-1.5 hover:bg-accent"
-                onClick={(e) => { e.stopPropagation(); rowMenu(e, inv); }}
-                aria-label="More options"
-              >
-                <MoreVertical className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </div>
-          </MobileCard>
+            }
+            actions={<MobileRowMenu onOpen={(e) => rowMenu(e, inv)} />}
+          />
         ))}
         {filtered.length === 0 && (
-          <EmptyState
-            icon={FileText}
-            title={q || statusFilter !== "all" ? "No matching invoices" : "No invoices yet"}
-            description={q || statusFilter !== "all"
-              ? "Try adjusting your search or status filter."
-              : "Open a job and generate an invoice from its Invoices section."}
-          />
+          <div className="px-4">
+            <EmptyState
+              icon={FileText}
+              title={q || statusFilter !== "all" ? "No matching invoices" : "No invoices yet"}
+              description={q || statusFilter !== "all"
+                ? "Try adjusting your search or status filter."
+                : "Open a job and generate an invoice from its Invoices section."}
+            />
+          </div>
         )}
-      </div>
+      </MobileList>
 
       <RowContextMenu state={ctx} onClose={() => setCtx(null)} />
       <DeleteConfirm
