@@ -211,8 +211,10 @@ export function JobsManager({
         </PageHeader>
       </div>
 
-      {/* Phone header — pinned like a messaging app: title, search pill, status chips. */}
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 space-y-3 bg-background px-4 pb-3 pt-4 md:hidden">
+      {/* Phone header — pinned like a messaging app: title, search pill, status chips.
+          Solid background + a bottom border/shadow and a high z keep it clearly
+          above the list, so cards scroll *under* it instead of bleeding over it. */}
+      <div className="sticky top-0 z-30 -mx-4 -mt-4 space-y-3 border-b bg-background px-4 pb-3 pt-4 shadow-sm md:hidden">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Jobs</h1>
           {canMap && (
@@ -376,14 +378,14 @@ export function JobsManager({
       {/* Phone: each job in its own framed card — a bordered, rounded rectangle
           with a status stripe, title, details and a status pill. Long-press for
           actions. */}
-      <div className="space-y-3 md:hidden">
+      <div className="space-y-3 pt-3 md:hidden">
         {filtered.map((j) => (
           <button
             key={j.id}
             type="button"
             onClick={() => openJob(j)}
             onContextMenu={(e) => rowMenu(e, j)}
-            className="flex w-full items-stretch gap-3 overflow-hidden rounded-2xl border bg-card text-left shadow-sm transition-colors active:bg-accent"
+            className="flex w-full scroll-mt-2 items-stretch gap-3 overflow-hidden rounded-2xl border bg-card text-left shadow-sm transition-colors active:bg-accent"
           >
             {/* Status stripe down the left edge of the frame */}
             <span className={cn("w-1.5 shrink-0", statusDot[j.status] ?? "bg-zinc-300")} aria-hidden />
