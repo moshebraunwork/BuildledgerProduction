@@ -119,3 +119,68 @@
     background: transparent;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Mobile page transition
+   The incoming route emerges as a rounded card rising from the bottom (where
+   the thumb / tab bar sit): clip-path reveal + rise + scale, with a blur that
+   clears, plus a brief on-brand indigo glow sweeping up from below. Mobile only
+   (desktop uses the persistent sidebar), and a plain fade when the user prefers
+   reduced motion. Driven by <PageTransition>, which remounts the page per route.
+--------------------------------------------------------------------------- */
+@media (max-width: 767px) and (prefers-reduced-motion: no-preference) {
+  /* No `forwards`/`both` fill and no `will-change` here on purpose: once the
+     animation ends the wrapper must revert to no transform/filter/clip-path, or
+     it would establish a containing block / clip region that traps the app's
+     full-screen `position: fixed` overlays (SlideOver, drawer, toasts). */
+  .page-transition-enter {
+    animation: page-enter-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    transform-origin: bottom center;
+  }
+
+  /* Fixed full-screen glow; lives outside the transformed element so it tracks
+     the viewport and isn't cropped by the reveal's clip-path. Sits above page
+     content (z-5) but below the header (z-30) and tab bar (z-40). */
+  .page-enter-glow {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+    background: radial-gradient(125% 55% at 50% 100%, hsl(var(--primary) / 0.16), transparent 70%);
+    animation: page-enter-glow 0.55s ease-out both;
+  }
+}
+
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .page-transition-enter {
+    animation: page-enter-fade 0.2s ease-out both;
+  }
+}
+
+@keyframes page-enter-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.965);
+    filter: blur(7px);
+    clip-path: inset(6% 5% 0 5% round 26px);
+  }
+  55% {
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+    clip-path: inset(0 0 0 0 round 0);
+  }
+}
+
+@keyframes page-enter-glow {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes page-enter-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

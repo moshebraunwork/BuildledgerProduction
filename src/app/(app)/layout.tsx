@@ -7,6 +7,7 @@ import { MobileNav } from "@/components/mobile-nav";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ApplyTheme } from "@/components/apply-theme";
 import { ScrollReset } from "@/components/scroll-reset";
+import { PageTransition } from "@/components/page-transition";
 import { AskAiProvider } from "@/components/ask-ai/ask-ai-context";
 import { LocationTracker } from "@/components/location/location-tracker";
 
@@ -103,7 +104,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           />
           <main id="app-main" className="flex-1 overflow-y-auto overscroll-contain-y p-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:bg-gradient-to-br md:from-background md:via-background md:to-primary/5 md:p-8 md:pb-8">
             <ScrollReset targetId="app-main" />
-            {children}
+            <PageTransition>{children}</PageTransition>
           </main>
         </div>
         <MobileTabBar isSuperadmin={user.isSuperadmin} permissions={user.permissions} />
