@@ -4,52 +4,54 @@
 
 @layer base {
   :root {
-    /* Normal, neutral shadcn slate theme — clean and familiar for a daily-use business tool */
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Modern light theme: a clean, slightly-cool canvas with a vibrant indigo
+       brand colour so actions, links and the brand gradient read as energetic
+       and current rather than flat slate-grey. */
+    --background: 210 40% 99%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --popover-foreground: 222 47% 11%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 30% 96%;
+    --secondary-foreground: 222 47% 18%;
+    --muted: 220 30% 96%;
+    --muted-foreground: 215 18% 47%;
+    --accent: 226 70% 96%;
+    --accent-foreground: 243 60% 40%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 25% 90%;
+    --input: 215 25% 88%;
+    --ring: 243 75% 59%;
+    --radius: 0.75rem;
   }
 
   .dark {
-    /* Improved dark palette: background sits below cards so they stand out.
-       Borders slightly lighter for clearer separation. Primary uses a strong
-       blue accent so action buttons read as actions, not flat surfaces. */
-    --background: 222 18% 9%;
+    /* Dark palette: background sits below cards so they stand out. Primary uses
+       the same indigo family as light mode (brightened for the dark canvas) so
+       the brand reads consistently across themes. */
+    --background: 224 24% 8%;
     --foreground: 210 20% 96%;
-    --card: 222 16% 13%;
+    --card: 224 20% 12%;
     --card-foreground: 210 20% 96%;
-    --popover: 222 16% 13%;
+    --popover: 224 20% 12%;
     --popover-foreground: 210 20% 96%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 222 14% 18%;
+    --primary: 245 80% 67%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 224 16% 18%;
     --secondary-foreground: 210 20% 96%;
-    --muted: 222 14% 18%;
-    --muted-foreground: 215 16% 65%;
-    --accent: 222 14% 22%;
+    --muted: 224 16% 18%;
+    --muted-foreground: 218 14% 65%;
+    --accent: 224 16% 22%;
     --accent-foreground: 210 20% 96%;
     --destructive: 0 70% 45%;
-    --destructive-foreground: 210 20% 96%;
-    --border: 222 14% 22%;
-    --input: 222 14% 22%;
-    --ring: 217 91% 60%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 224 16% 22%;
+    --input: 224 16% 24%;
+    --ring: 245 80% 67%;
   }
 }
 
@@ -57,12 +59,36 @@
   * {
     @apply border-border;
   }
+  html {
+    /* Stop iOS from auto-inflating text after orientation changes. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     /* Normal system font stack, normal text size — as requested */
     font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
       Roboto, Helvetica, Arial, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Remove the grey flash when tapping buttons/links on touch devices. */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Keep inner scrollers from rubber-banding the whole shell (and from
+     triggering pull-to-refresh) on touch devices. */
+  .overscroll-contain-y {
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Safe-area helpers for notch / home-indicator devices. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   /* Tinted text selection */
