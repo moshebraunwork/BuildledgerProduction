@@ -89,11 +89,11 @@ export function MobileNav({
   return (
     <>
       {/* Top bar (mobile only) */}
-      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-card/95 px-3 shadow-sm backdrop-blur-md md:hidden">
+      <header className="sticky top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b bg-card/80 px-3 pt-[env(safe-area-inset-top)] shadow-sm backdrop-blur-xl md:hidden">
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="-ml-1 flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           aria-label="Open menu"
         >
           <Menu className="h-5 w-5" />
@@ -129,7 +129,7 @@ export function MobileNav({
           role="dialog"
           aria-modal="true"
         >
-          <div className="flex h-14 items-center justify-between border-b px-4">
+          <div className="flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center justify-between border-b px-4 pt-[env(safe-area-inset-top)]">
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-sm">
                 <HardHat className="h-4 w-4" />
@@ -139,7 +139,7 @@ export function MobileNav({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="-mr-1 flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               aria-label="Close menu"
             >
               <X className="h-5 w-5" />
@@ -162,7 +162,7 @@ export function MobileNav({
           </nav>
 
           {/* Profile footer — identity, theme preference and sign out. */}
-          <div className="border-t p-3 space-y-3">
+          <div className="border-t p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] space-y-3">
             <div className="flex items-center gap-3">
               <Avatar className="h-9 w-9 shrink-0 ring-2 ring-primary/20 ring-offset-1 ring-offset-card">
                 <AvatarFallback className="bg-gradient-to-br from-primary/15 to-violet-500/15 text-foreground">{initials}</AvatarFallback>

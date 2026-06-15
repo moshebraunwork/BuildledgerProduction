@@ -63,12 +63,12 @@ export function MobileTabBar({
       <Link
         key={t.href}
         href={t.href}
-        className="flex flex-1 flex-col items-center justify-center py-1 text-[10px] font-medium"
+        className="flex flex-1 flex-col items-center justify-center py-1.5 text-[11px] font-medium"
       >
         {/* One perfectly-rounded pill wraps the icon AND the label when active. */}
         <span
           className={cn(
-            "flex flex-col items-center gap-0.5 rounded-full px-4 py-1.5 transition-colors",
+            "flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-full px-4 py-1.5 transition-colors",
             active ? "bg-primary/10 text-primary shadow-sm shadow-primary/20" : "text-muted-foreground"
           )}
         >
@@ -84,7 +84,7 @@ export function MobileTabBar({
     <button
       type="button"
       onClick={openPanel}
-      className="flex flex-1 flex-col items-center justify-center gap-0.5 pb-1.5 text-[10px] font-medium"
+      className="flex flex-1 flex-col items-center justify-center gap-0.5 pb-1.5 text-[11px] font-medium"
     >
       <span
         className={cn(
@@ -97,7 +97,7 @@ export function MobileTabBar({
       <span className="font-semibold text-primary">Ask AI</span>
     </button>
   ) : (
-    <Link href="/clock" className="flex flex-1 flex-col items-center justify-center gap-0.5 pb-1.5 text-[10px] font-medium">
+    <Link href="/clock" className="flex flex-1 flex-col items-center justify-center gap-0.5 pb-1.5 text-[11px] font-medium">
       <span
         className={cn(
           "-mt-5 flex h-12 w-12 items-center justify-center rounded-full border-4 border-card shadow-lg shadow-primary/30 ring-2 ring-primary/20 transition-transform active:scale-95",

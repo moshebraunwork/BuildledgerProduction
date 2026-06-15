@@ -101,7 +101,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             email={user.email}
             fullName={user.fullName}
           />
-          <main id="app-main" className="flex-1 overflow-y-auto p-4 pb-24 md:bg-gradient-to-br md:from-background md:via-background md:to-primary/5 md:p-8">
+          <main id="app-main" className="flex-1 overflow-y-auto overscroll-contain-y p-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:bg-gradient-to-br md:from-background md:via-background md:to-primary/5 md:p-8 md:pb-8">
             <ScrollReset targetId="app-main" />
             {children}
           </main>
