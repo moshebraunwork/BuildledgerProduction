@@ -293,21 +293,22 @@ export function JobChat({
             </div>
           )}
           <div className="flex items-end gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
-              onChange={(e) => setPendingFile(e.target.files?.[0] ?? null)}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
+            {/* A <label> wraps the input so tapping opens the picker via native
+                label association — more reliable on mobile than calling .click()
+                on a display:none input, which some mobile browsers block. */}
+            <label
               aria-label="Attach file"
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors active:bg-accent md:h-11 md:w-11"
+              className="flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors active:bg-accent md:h-11 md:w-11"
             >
               <Paperclip className="h-5 w-5" />
-            </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+                onChange={(e) => setPendingFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
             <Textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
