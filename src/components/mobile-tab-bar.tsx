@@ -38,6 +38,45 @@ export function MobileTabBar({
 }) {
   const pathname = usePathname();
   const { openPanel, open: aiOpen, canUse: canUseAi } = useAskAi();
+
+  // Refs to each route tab's anchor so we can measure where the rolling-ball
+  // indicator should sit, and the nav itself for a relative origin.
+  const navRef = React.useRef<HTMLElement>(null);
+  const tabRefs = React.useRef<Map<string, HTMLElement>>(new Map());
+  const setTabRef = (href: string) => (el: HTMLAnchorElement | null) => {
+    if (el) tabRefs.current.set(href, el);
+    else tabRefs.current.delete(href);
+  };
+
+  // The ball's centre-x (px from the nav's left edge) and its accumulated
+  // rotation. Rotation is derived from x so translating and spinning stay in
+  // lock-step → it reads as a ball rolling from the old tab to the new one.
+  const BALL = 16; // px diameter
+  const CIRC = Math.PI * BALL; // distance for one full revolution
+  const [ball, setBall] = React.useState<{ x: number; r: number } | null>(null);
+
+  React.useEffect(() => {
+    const measure = () => {
+      const nav = navRef.current;
+      const active = tabRefs.current.get(pathname);
+      if (!nav || !active) {
+        setBall(null);
+        return;
+      }
+      const nb = nav.getBoundingClientRect();
+      const ab = active.getBoundingClientRect();
+      const x = ab.left - nb.left + ab.width / 2;
+      setBall({ x, r: (x / CIRC) * 360 });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("orientationchange", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+    };
+  }, [pathname, canUseAi, CIRC]);
+
   if (!TOP_LEVEL.has(pathname)) return null;
 
   const navTabs = SIDE_TABS.filter((t) => can(isSuperadmin, permissions, t.perm));
@@ -63,6 +102,7 @@ export function MobileTabBar({
       <Link
         key={t.href}
         href={t.href}
+        ref={setTabRef(t.href)}
         className="flex flex-1 flex-col items-center justify-center py-1.5 text-[11px] font-medium"
       >
         {/* One perfectly-rounded pill wraps the icon AND the label when active. */}
@@ -97,7 +137,7 @@ export function MobileTabBar({
       <span className="font-semibold text-primary">Ask AI</span>
     </button>
   ) : (
-    <Link href="/clock" className="flex flex-1 flex-col items-center justify-center gap-0.5 pb-1.5 text-[11px] font-medium">
+    <Link href="/clock" ref={setTabRef("/clock")} className="flex flex-1 flex-col items-center justify-center gap-0.5 pb-1.5 text-[11px] font-medium">
       <span
         className={cn(
           "-mt-5 flex h-12 w-12 items-center justify-center rounded-full border-4 border-card shadow-lg shadow-primary/30 ring-2 ring-primary/20 transition-transform active:scale-95",
@@ -111,7 +151,18 @@ export function MobileTabBar({
   );
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch rounded-t-2xl border-t bg-card/90 pb-[env(safe-area-inset-bottom)] pt-0.5 shadow-[0_-6px_20px_rgba(0,0,0,0.1)] backdrop-blur-xl md:hidden">
+    <nav
+      ref={navRef}
+      className="fixed inset-x-0 bottom-0 z-40 flex items-stretch rounded-t-2xl border-t bg-card/90 pb-[env(safe-area-inset-bottom)] pt-0.5 shadow-[0_-6px_20px_rgba(0,0,0,0.1)] backdrop-blur-xl md:hidden"
+    >
+      {/* Rolling-ball indicator: a glossy sphere that rolls along the top rail
+          to whichever tab is active. The wrapper translates to the tab's centre
+          while the inner ball spins, so the two read as a single rolling ball. */}
+      {ball && (
+        <span className="tab-ball-wrap" style={{ transform: `translateX(${ball.x}px)` }} aria-hidden>
+          <span className="tab-ball" style={{ transform: `rotate(${ball.r}deg)` }} />
+        </span>
+      )}
       {left.map(renderTab)}
       {center}
       {right.map(renderTab)}
