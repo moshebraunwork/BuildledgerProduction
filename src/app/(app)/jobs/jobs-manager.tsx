@@ -20,7 +20,6 @@ import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { MapView, type JobPin, type EmpPin } from "@/app/(app)/map/map-view";
 import { Plus, Search, Hammer, SlidersHorizontal, Check, Map as MapIcon, List as ListIcon } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { MobileList, MobileListRow } from "@/components/mobile-list";
 
 interface Job {
   id: string; title: string; place: string | null; scheduled_date: string | null;
@@ -374,32 +373,49 @@ export function JobsManager({
         </CardContent>
       </Card>
 
-      {/* Phone: chat-style list — full-bleed rows with title + last details,
-          relative date and a status dot on the right. Long-press for actions. */}
-      <MobileList>
+      {/* Phone: each job in its own framed card — a bordered, rounded rectangle
+          with a status stripe, title, details and a status pill. Long-press for
+          actions. */}
+      <div className="space-y-3 md:hidden">
         {filtered.map((j) => (
-          <MobileListRow
+          <button
             key={j.id}
+            type="button"
             onClick={() => openJob(j)}
             onContextMenu={(e) => rowMenu(e, j)}
-            title={j.title}
-            meta={listDate(j.scheduled_date)}
-            subtitle={[j.customer_name, j.place].filter(Boolean).join(" · ") || <span className="capitalize">{j.status}</span>}
-            trailing={<span className={cn("block h-2.5 w-2.5 rounded-full", statusDot[j.status] ?? "bg-zinc-300")} title={j.status} />}
-          />
+            className="flex w-full items-stretch gap-3 overflow-hidden rounded-2xl border bg-card text-left shadow-sm transition-colors active:bg-accent"
+          >
+            {/* Status stripe down the left edge of the frame */}
+            <span className={cn("w-1.5 shrink-0", statusDot[j.status] ?? "bg-zinc-300")} aria-hidden />
+            <div className="min-w-0 flex-1 py-3 pr-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="truncate text-[15px] font-semibold">{j.title}</p>
+                {listDate(j.scheduled_date) && (
+                  <span className="shrink-0 text-xs text-muted-foreground">{listDate(j.scheduled_date)}</span>
+                )}
+              </div>
+              <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                {[j.customer_name, j.place].filter(Boolean).join(" · ") || "No customer or location"}
+              </p>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <Badge variant={statusVariant[j.status] ?? "secondary"} className="capitalize">{j.status}</Badge>
+                {Number(j.estimate) > 0 && (
+                  <span className="text-sm font-medium tabular-nums">{fmtMoney(j.estimate)}</span>
+                )}
+              </div>
+            </div>
+          </button>
         ))}
         {filtered.length === 0 && (
-          <div className="px-4">
-            <EmptyState
-              icon={Hammer}
-              title={q || statusFilter !== "all" ? "No matching jobs" : "No jobs yet"}
-              description={q || statusFilter !== "all"
-                ? "Try adjusting your search or status filter."
-                : "Create your first job to start tracking time, items and invoices."}
-            />
-          </div>
+          <EmptyState
+            icon={Hammer}
+            title={q || statusFilter !== "all" ? "No matching jobs" : "No jobs yet"}
+            description={q || statusFilter !== "all"
+              ? "Try adjusting your search or status filter."
+              : "Create your first job to start tracking time, items and invoices."}
+          />
         )}
-      </MobileList>
+      </div>
         </div>
 
         {/* Right: map of jobs (and employees, if permitted) */}

@@ -223,16 +223,25 @@ export function JobChat({
   }
 
   // ---- open thread ----
+  // On phones the thread takes over the whole screen (fixed overlay) so the
+  // composer sits at the very bottom and only the chat's own back button shows —
+  // the job app bar underneath is covered, so the two back buttons no longer
+  // collide. On md+ it stays an inline panel inside the Chat tab.
   if (openChat) {
     return (
-      <div className="flex h-[calc(100dvh-14rem)] flex-col md:h-[min(65vh,560px)]">
+      <div className="fixed inset-0 z-50 flex flex-col bg-background md:static md:z-auto md:h-[min(65vh,560px)] md:rounded-xl md:border">
         {/* Thread header */}
-        <div className="flex items-center gap-2 border-b pb-2">
-          <Button variant="ghost" size="sm" className="-ml-2" onClick={() => { setOpenChat(null); refreshChats(); }}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+        <div className="flex items-center gap-2 border-b bg-background/95 px-2 py-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] backdrop-blur-md md:rounded-t-xl md:px-3 md:pt-2">
+          <button
+            type="button"
+            onClick={() => { setOpenChat(null); refreshChats(); }}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-accent"
+            aria-label="Back to chats"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{chatTitle(openChat)}</p>
+            <p className="truncate text-[15px] font-semibold leading-tight md:text-sm">{chatTitle(openChat)}</p>
             <p className="text-xs text-muted-foreground">
               {openChat.participants.length} participants
               {!openChat.isParticipant && (
@@ -245,7 +254,7 @@ export function JobChat({
         </div>
 
         {/* Messages */}
-        <div className="flex-1 space-y-3 overflow-y-auto py-3 pr-1">
+        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3 md:px-3">
           {loadingMessages && (
             <div className="flex justify-center py-8 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>
           )}
@@ -256,13 +265,13 @@ export function JobChat({
             <div key={m.id} className={cn("flex", m.mine ? "justify-end" : "justify-start")}>
               <div
                 className={cn(
-                  "max-w-[82%] space-y-1.5 rounded-2xl px-3 py-2",
+                  "max-w-[82%] space-y-1.5 rounded-2xl px-3.5 py-2",
                   m.mine ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm bg-muted"
                 )}
               >
                 {!m.mine && <p className="text-[11px] font-semibold text-primary">{m.senderName ?? "Unknown"}</p>}
                 <AttachmentView m={m} light={m.mine} />
-                {m.body && <p className="whitespace-pre-wrap break-words text-sm">{m.body}</p>}
+                {m.body && <p className="whitespace-pre-wrap break-words text-[15px] leading-snug md:text-sm">{m.body}</p>}
                 <p className={cn("text-right text-[10px]", m.mine ? "text-primary-foreground/70" : "text-muted-foreground")}>
                   {fmtWhen(m.createdAt)}
                 </p>
@@ -272,13 +281,13 @@ export function JobChat({
           <div ref={bottomRef} />
         </div>
 
-        {/* Composer */}
-        <div className="space-y-2 border-t pt-2">
+        {/* Composer — pinned at the bottom, rounded and roomy. */}
+        <div className="space-y-2 border-t bg-background px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2.5 md:rounded-b-xl md:pb-3">
           {pendingFile && (
-            <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5 text-xs">
+            <div className="flex items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2 text-xs">
               <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">{pendingFile.name}</span>
-              <button type="button" onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="rounded p-0.5 hover:bg-accent">
+              <button type="button" onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="rounded-full p-1 hover:bg-accent">
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -291,9 +300,14 @@ export function JobChat({
               accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
               onChange={(e) => setPendingFile(e.target.files?.[0] ?? null)}
             />
-            <Button type="button" variant="outline" size="icon" className="shrink-0" onClick={() => fileInputRef.current?.click()} aria-label="Attach file">
-              <Paperclip className="h-4 w-4" />
-            </Button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Attach file"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors active:bg-accent md:h-11 md:w-11"
+            >
+              <Paperclip className="h-5 w-5" />
+            </button>
             <Textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -302,11 +316,17 @@ export function JobChat({
               }}
               placeholder="Type a message…"
               rows={1}
-              className="max-h-32 min-h-[40px] flex-1 resize-none"
+              className="max-h-32 min-h-[48px] flex-1 resize-none rounded-3xl bg-muted px-4 py-3 text-[15px] md:min-h-[44px]"
             />
-            <Button type="button" size="icon" className="shrink-0" disabled={sending || (!draft.trim() && !pendingFile)} onClick={handleSend} aria-label="Send">
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
+            <button
+              type="button"
+              disabled={sending || (!draft.trim() && !pendingFile)}
+              onClick={handleSend}
+              aria-label="Send"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-transform active:scale-95 disabled:opacity-40 md:h-11 md:w-11"
+            >
+              {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+            </button>
           </div>
         </div>
       </div>

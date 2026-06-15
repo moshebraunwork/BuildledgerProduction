@@ -33,7 +33,7 @@ import { computeBilling } from "@/lib/billing";
 import {
   Plus, Trash2, Pencil, Download, Send, Mail, Camera, FileText, MoreVertical, X,
   CheckCircle, AlertTriangle, Upload, Paperclip, Play, MessagesSquare,
-  ChevronLeft, Info, Clock, Receipt, Image as ImageIcon,
+  ChevronLeft, ChevronDown, Info, Clock, Receipt, Image as ImageIcon,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { JobClockCard } from "./job-clock-card";
@@ -215,6 +215,10 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
   }, []);
   // Mobile job-details sheet (slides down from the app bar).
   const [detailsOpen, setDetailsOpen] = React.useState(false);
+  // Phone app-bar overflow ("⋮") menu. Self-contained so it doesn't depend on
+  // the coordinate-based RowContextMenu (which closes on any scroll — unreliable
+  // on a phone where the page scrolls under your thumb).
+  const [actionsOpen, setActionsOpen] = React.useState(false);
 
   // ---- loaded data ----
   const [job, setJob] = React.useState<Job | null>(null);
@@ -789,40 +793,84 @@ export function JobSlideOver({ jobId, perms }: JobSlideOverProps) {
             >
               <ChevronLeft className="h-6 w-6" />
             </button>
-            <div className="min-w-0 flex-1 pl-1">
-              <p className="truncate text-[15px] font-semibold leading-tight">{job.title}</p>
-              <p className="truncate text-xs capitalize text-muted-foreground">
-                {job.status}{job.customer_name ? ` · ${job.customer_name}` : ""}
-              </p>
-            </div>
-            {/* Job details live behind this button (slide-down sheet), not in the section bar. */}
+            {/* The whole identity block opens the job details sheet — the chevron
+                and "details" hint make that tappability obvious. */}
             <button
               type="button"
               onClick={() => setDetailsOpen(true)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-accent"
-              aria-label="Job details"
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-xl px-1.5 py-1 text-left transition-colors active:bg-accent"
+              aria-label="Open job details"
             >
-              <Info className="h-5 w-5" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[15px] font-semibold leading-tight">{job.title}</p>
+                <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                  <Info className="h-3 w-3 shrink-0" />
+                  <span className="capitalize">{job.status}{job.customer_name ? ` · ${job.customer_name}` : ""}</span>
+                  <span className="text-muted-foreground/70">· details</span>
+                </p>
+              </div>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
             </button>
             {(perms.jobEdit || perms.jobDelete) && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  const actions: ContextMenuState["actions"] = [];
-                  if (perms.jobEdit) {
-                    actions.push({ label: "Edit job details", icon: "edit", onClick: () => { setDetailsOpen(true); startEdit(); } });
-                    for (const s of ["scheduled", "active", "complete"].filter((x) => x !== job.status)) {
-                      actions.push({ label: `Mark ${s}`, icon: "check", onClick: () => changeStatus(s) });
-                    }
-                  }
-                  if (perms.jobDelete) actions.push({ label: "Delete job", icon: "delete", onClick: () => setDeleteConfirmOpen(true), destructive: true });
-                  setRowCtx({ x: e.clientX, y: e.clientY, actions });
-                }}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-accent"
-                aria-label="Job actions"
-              >
-                <MoreVertical className="h-5 w-5" />
-              </button>
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setActionsOpen((o) => !o)}
+                  className={cn(
+                    "flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-accent",
+                    actionsOpen && "bg-accent text-foreground"
+                  )}
+                  aria-label="Job actions"
+                  aria-haspopup="menu"
+                  aria-expanded={actionsOpen}
+                >
+                  <MoreVertical className="h-5 w-5" />
+                </button>
+                {actionsOpen && (
+                  <>
+                    {/* Invisible backdrop catches an outside tap to dismiss. */}
+                    <div className="fixed inset-0 z-40" onClick={() => setActionsOpen(false)} aria-hidden />
+                    <div
+                      role="menu"
+                      className="absolute right-0 top-12 z-50 w-52 overflow-hidden rounded-xl border bg-popover p-1 text-popover-foreground shadow-lg"
+                    >
+                      {perms.jobEdit && (
+                        <>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => { setActionsOpen(false); setDetailsOpen(true); startEdit(); }}
+                            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition-colors active:bg-accent"
+                          >
+                            <Pencil className="h-4 w-4" />Edit job details
+                          </button>
+                          {["scheduled", "active", "complete"].filter((x) => x !== job.status).map((s) => (
+                            <button
+                              key={s}
+                              type="button"
+                              role="menuitem"
+                              onClick={() => { setActionsOpen(false); changeStatus(s); }}
+                              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm capitalize transition-colors active:bg-accent"
+                            >
+                              <CheckCircle className="h-4 w-4" />Mark {s}
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      {perms.jobDelete && (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => { setActionsOpen(false); setDeleteConfirmOpen(true); }}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-destructive transition-colors active:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />Delete job
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
 
