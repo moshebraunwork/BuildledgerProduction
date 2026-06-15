@@ -63,16 +63,18 @@ export function MobileTabBar({
       <Link
         key={t.href}
         href={t.href}
-        className={cn(
-          "relative flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-medium transition-colors",
-          active ? "text-primary" : "text-muted-foreground"
-        )}
+        className="flex flex-1 flex-col items-center justify-center py-1 text-[10px] font-medium"
       >
-        {active && <span className="absolute top-0 h-1 w-8 rounded-full bg-gradient-to-r from-primary to-violet-500 shadow-[0_0_8px_hsl(var(--primary)/0.6)]" />}
-        <span className={cn("rounded-xl px-3 py-0.5 transition-colors", active && "bg-primary/10")}>
+        {/* One perfectly-rounded pill wraps the icon AND the label when active. */}
+        <span
+          className={cn(
+            "flex flex-col items-center gap-0.5 rounded-full px-4 py-1.5 transition-colors",
+            active ? "bg-primary/10 text-primary shadow-sm shadow-primary/20" : "text-muted-foreground"
+          )}
+        >
           <Icon className={cn("h-5 w-5 transition-transform", active && "scale-110")} />
+          <span className={cn(active && "font-semibold")}>{t.label}</span>
         </span>
-        <span className={cn(active && "font-semibold")}>{t.label}</span>
       </Link>
     );
   };
