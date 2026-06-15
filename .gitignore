@@ -4,3 +4,6 @@ node_modules
 .env.local
 .DS_Store
 *.log
+
+# TypeScript incremental build cache — regenerated on every build.
+tsconfig.tsbuildinfo
