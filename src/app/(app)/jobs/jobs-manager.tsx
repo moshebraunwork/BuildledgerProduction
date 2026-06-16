@@ -102,6 +102,16 @@ export function JobsManager({
   const [mobileView, setMobileView] = React.useState<"list" | "map">("list");
   const [fsOpen, setFsOpen] = React.useState(false);
   const fsRef = React.useRef<HTMLDivElement>(null);
+  // Track the mobile header height so we can push the list below it.
+  const mobileHdrRef = React.useRef<HTMLDivElement>(null);
+  const [mobileHdrH, setMobileHdrH] = React.useState(0);
+  React.useEffect(() => {
+    const el = mobileHdrRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setMobileHdrH(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   React.useEffect(() => {
     if (!fsOpen) return;
     const onDoc = (e: MouseEvent) => { if (fsRef.current && !fsRef.current.contains(e.target as Node)) setFsOpen(false); };
@@ -211,10 +221,17 @@ export function JobsManager({
         </PageHeader>
       </div>
 
-      {/* Phone header — title, search pill, status chips. Pinned to the top of
-          the scroll area so search + filters stay visible while the list moves
-          under it. Sits below the global top bar; z-20 keeps it under the glow. */}
-      <div className="-mx-4 -mt-4 sticky top-0 z-20 mb-1 space-y-3 border-b bg-background px-4 pb-3 pt-4 md:hidden">
+      {/* Phone header — title, search pill, status chips. Fixed below the global
+          top bar so it never scrolls away. `position:fixed` is used (not sticky)
+          because the page-enter animation runs a transform on an ancestor, which
+          would break sticky during the transition. A sibling spacer div (below)
+          reserves the same height in the normal-flow layout so list cards start
+          below the header. */}
+      <div
+        ref={mobileHdrRef}
+        className="fixed left-0 right-0 z-20 space-y-3 border-b bg-background px-4 pb-3 pt-4 md:hidden"
+        style={{ top: "calc(3.5rem + env(safe-area-inset-top))" }}
+      >
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Jobs</h1>
           {canMap && (
@@ -257,6 +274,8 @@ export function JobsManager({
           </div>
         )}
       </div>
+      {/* Spacer: same height as the fixed phone header, so the list starts below it. */}
+      <div className="-mt-4 md:hidden" style={{ height: mobileHdrH }} aria-hidden />
 
       {/* Tablet-only List / Map switch (both panes show side-by-side on lg+) */}
       {canMap && (
