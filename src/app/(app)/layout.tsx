@@ -85,7 +85,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         time: c("punches.view"),
       }}
     >
-      <div className="flex h-screen overflow-hidden">
+      <div className="flex h-[100dvh] overflow-hidden">
         <ApplyTheme theme={user.theme} />
         {/* Location-required roles are tracked + gated here (superadmin exempt). */}
         <LocationTracker required={user.requireLocation && !user.isSuperadmin} />
