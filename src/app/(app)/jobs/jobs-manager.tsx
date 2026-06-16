@@ -211,9 +211,10 @@ export function JobsManager({
         </PageHeader>
       </div>
 
-      {/* Phone header — title, search pill, status chips. Scrolls with the list
-          (not pinned), so it can never float over or clip the first job card. */}
-      <div className="-mx-4 -mt-4 mb-1 space-y-3 border-b bg-background px-4 pb-3 pt-4 md:hidden">
+      {/* Phone header — title, search pill, status chips. Pinned to the top of
+          the scroll area so search + filters stay visible while the list moves
+          under it. Sits below the global top bar; z-20 keeps it under the glow. */}
+      <div className="-mx-4 -mt-4 sticky top-0 z-20 mb-1 space-y-3 border-b bg-background px-4 pb-3 pt-4 md:hidden">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Jobs</h1>
           {canMap && (
@@ -447,7 +448,7 @@ export function JobsManager({
         <button
           type="button"
           onClick={() => setCreateOpen(true)}
-          className="fixed bottom-24 right-4 z-30 flex h-14 items-center gap-2 rounded-2xl bg-primary px-5 text-primary-foreground shadow-lg shadow-primary/30 transition-transform active:scale-95 md:hidden"
+          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-50 flex h-14 items-center gap-2 rounded-2xl bg-primary px-5 text-primary-foreground shadow-lg shadow-primary/30 transition-transform active:scale-95 md:hidden"
         >
           <Plus className="h-5 w-5" />
           <span className="text-sm font-semibold">New job</span>
