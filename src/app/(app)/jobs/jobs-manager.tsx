@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createJob, deleteJob } from "./actions";
 import { setJobStatus } from "./[id]/actions";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,8 +18,15 @@ import { EmptyState } from "@/components/empty-state";
 import { fmtMoney, fmtDate, cn } from "@/lib/utils";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { MapView, type JobPin, type EmpPin } from "@/app/(app)/map/map-view";
-import { Plus, Search, Hammer, SlidersHorizontal, Check, Map as MapIcon, List as ListIcon } from "lucide-react";
+import { Plus, Search, Hammer, SlidersHorizontal, Check, Map as MapIcon, List as ListIcon, LayoutGrid, GripVertical } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+
+// Kanban columns map 1:1 to the real job statuses the backend accepts.
+const BOARD_COLS: { id: string; title: string; dot: string }[] = [
+  { id: "scheduled", title: "Scheduled", dot: "bg-sky-500" },
+  { id: "active", title: "In progress", dot: "bg-emerald-500" },
+  { id: "complete", title: "Completed", dot: "bg-zinc-400" },
+];
 
 interface Job {
   id: string; title: string; place: string | null; scheduled_date: string | null;
@@ -78,7 +85,11 @@ export function JobsManager({
 }) {
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [jobs, setJobs] = React.useState<Job[]>(initialJobs);
+  // List vs. Kanban board layout (Map stays a sub-toggle of the list layout).
+  const [layout, setLayout] = React.useState<"list" | "board">("list");
+  const [dragId, setDragId] = React.useState<string | null>(null);
 
   // Job markers for the embedded map — every job that has coordinates.
   const jobPins = React.useMemo<JobPin[]>(
@@ -90,7 +101,7 @@ export function JobsManager({
   );
   const [createOpen, setCreateOpen] = React.useState(false);
   const [form, setForm] = React.useState(blank);
-  const [q, setQ] = React.useState("");
+  const [q, setQ] = React.useState(() => searchParams.get("q") ?? "");
   const [statusFilter, setStatusFilter] = React.useState("all");
   const [sort, setSort] = React.useState("created_desc");
   const [ctx, setCtx] = React.useState<ContextMenuState | null>(null);
@@ -122,6 +133,28 @@ export function JobsManager({
 
   function openJob(job: Job) {
     router.push(`/jobs/${job.id}`);
+  }
+
+  // Open the create slide-over when arrived via ⌘K / the header "New job" button
+  // (which navigate to /jobs?new=1), then strip the param.
+  React.useEffect(() => {
+    if (searchParams.get("new") === "1" && canEdit) {
+      setCreateOpen(true);
+      router.replace("/jobs");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Change a job's status (used by the board drag-and-drop and the move menu).
+  async function changeStatus(jobId: string, status: string) {
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job || job.status === status) return;
+    setJobs((jj) => jj.map((j) => (j.id === jobId ? { ...j, status } : j)));
+    const res = await setJobStatus(jobId, status);
+    if (res && (res as any).error) {
+      setJobs((jj) => jj.map((j) => (j.id === jobId ? { ...j, status: job.status } : j)));
+      toast({ title: "Could not move job", description: (res as any).error, variant: "destructive" });
+    }
   }
 
   const filtered = React.useMemo(() => {
@@ -217,6 +250,24 @@ export function JobsManager({
     <>
       <div className="hidden md:block">
         <PageHeader title="Jobs" description="All jobs, scheduling, status, and locations.">
+          <div className="flex items-center rounded-lg border bg-muted/40 p-0.5">
+            {([
+              { v: "list", label: "List", Icon: ListIcon },
+              { v: "board", label: "Board", Icon: LayoutGrid },
+            ] as const).map(({ v, label, Icon }) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setLayout(v)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  layout === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Icon className="h-4 w-4" /> {label}
+              </button>
+            ))}
+          </div>
           {canEdit && <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New job</Button>}
         </PageHeader>
       </div>
@@ -234,16 +285,29 @@ export function JobsManager({
       >
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Jobs</h1>
-          {canMap && (
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => setMobileView((v) => (v === "list" ? "map" : "list"))}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-accent"
-              aria-label={mobileView === "list" ? "Show map" : "Show list"}
+              onClick={() => setLayout((l) => (l === "board" ? "list" : "board"))}
+              className={cn(
+                "flex h-10 w-10 items-center justify-center rounded-full transition-colors active:bg-accent",
+                layout === "board" ? "text-primary" : "text-muted-foreground"
+              )}
+              aria-label={layout === "board" ? "Show list" : "Show board"}
             >
-              {mobileView === "list" ? <MapIcon className="h-5 w-5" /> : <ListIcon className="h-5 w-5" />}
+              {layout === "board" ? <ListIcon className="h-5 w-5" /> : <LayoutGrid className="h-5 w-5" />}
             </button>
-          )}
+            {canMap && layout === "list" && (
+              <button
+                type="button"
+                onClick={() => setMobileView((v) => (v === "list" ? "map" : "list"))}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-accent"
+                aria-label={mobileView === "list" ? "Show map" : "Show list"}
+              >
+                {mobileView === "list" ? <MapIcon className="h-5 w-5" /> : <ListIcon className="h-5 w-5" />}
+              </button>
+            )}
+          </div>
         </div>
         <div className="relative">
           <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -254,7 +318,7 @@ export function JobsManager({
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
-        {mobileView === "list" && (
+        {layout === "list" && mobileView === "list" && (
           <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {STATUS_FILTERS.map((s) => (
               <button
@@ -277,6 +341,19 @@ export function JobsManager({
       {/* Spacer: same height as the fixed phone header, so the list starts below it. */}
       <div className="-mt-4 md:hidden" style={{ height: mobileHdrH }} aria-hidden />
 
+      {layout === "board" && (
+        <JobsBoard
+          jobs={jobs}
+          q={q}
+          onOpen={openJob}
+          onMove={changeStatus}
+          canEdit={canEdit}
+          dragId={dragId}
+          setDragId={setDragId}
+        />
+      )}
+
+      {layout === "list" && <>
       {/* Tablet-only List / Map switch (both panes show side-by-side on lg+) */}
       {canMap && (
         <div className="mb-4 hidden rounded-md border p-0.5 md:flex lg:hidden">
@@ -461,9 +538,10 @@ export function JobsManager({
           </div>
         )}
       </div>
+      </>}
 
       {/* Phone: floating "New job" button, kept clear of the bottom tab bar. */}
-      {canEdit && mobileView === "list" && (
+      {canEdit && layout === "list" && mobileView === "list" && (
         <button
           type="button"
           onClick={() => setCreateOpen(true)}
@@ -525,5 +603,109 @@ export function JobsManager({
         </div>
       </SlideOver>
     </>
+  );
+}
+
+// Kanban board — columns are the real job statuses. Desktop reorders by native
+// drag-and-drop; touch devices get per-card "move" chips (drag is unreliable on
+// mobile). Both paths call the same `onMove` (setJobStatus) used elsewhere.
+function JobsBoard({
+  jobs, q, onOpen, onMove, canEdit, dragId, setDragId,
+}: {
+  jobs: Job[];
+  q: string;
+  onOpen: (job: Job) => void;
+  onMove: (jobId: string, status: string) => void;
+  canEdit: boolean;
+  dragId: string | null;
+  setDragId: (id: string | null) => void;
+}) {
+  const ql = q.trim().toLowerCase();
+  const visible = jobs.filter(
+    (j) => !ql || `${j.title} ${j.customer_name ?? ""} ${j.place ?? ""}`.toLowerCase().includes(ql)
+  );
+
+  return (
+    <div className="ws-fade -mx-1 overflow-x-auto pb-4">
+      <div className="flex gap-3 px-1 md:grid md:grid-cols-3">
+        {BOARD_COLS.map((col) => {
+          const cards = visible.filter((j) => j.status === col.id);
+          return (
+            <div
+              key={col.id}
+              onDragOver={canEdit ? (e) => e.preventDefault() : undefined}
+              onDrop={
+                canEdit
+                  ? (e) => {
+                      e.preventDefault();
+                      const id = e.dataTransfer.getData("text/plain") || dragId;
+                      if (id) onMove(id, col.id);
+                      setDragId(null);
+                    }
+                  : undefined
+              }
+              className="flex w-[80vw] max-w-[20rem] shrink-0 flex-col rounded-xl border bg-muted/30 md:w-auto md:max-w-none"
+            >
+              <div className="flex items-center gap-2 border-b px-3 py-2.5">
+                <span className={cn("h-2 w-2 rounded-full", col.dot)} />
+                <span className="text-sm font-semibold uppercase tracking-wide">{col.title}</span>
+                <span className="ml-auto rounded-full bg-background px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">{cards.length}</span>
+              </div>
+              <div className="flex min-h-[6rem] flex-1 flex-col gap-2 p-2">
+                {cards.map((job) => (
+                  <div
+                    key={job.id}
+                    draggable={canEdit}
+                    onDragStart={
+                      canEdit
+                        ? (e) => { e.dataTransfer.setData("text/plain", job.id); e.dataTransfer.effectAllowed = "move"; setDragId(job.id); }
+                        : undefined
+                    }
+                    onDragEnd={() => setDragId(null)}
+                    onClick={() => onOpen(job)}
+                    className={cn(
+                      "group cursor-pointer rounded-lg border bg-card p-3 shadow-sm transition-all hover:shadow-md",
+                      canEdit && "md:cursor-grab md:active:cursor-grabbing",
+                      dragId === job.id && "opacity-50"
+                    )}
+                  >
+                    <div className="flex items-start gap-2">
+                      {canEdit && <GripVertical className="mt-0.5 hidden h-4 w-4 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-muted-foreground md:block" />}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium leading-snug">{job.title}</p>
+                        {job.customer_name && <p className="mt-0.5 truncate text-xs text-muted-foreground">{job.customer_name}</p>}
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between font-mono text-[11px] text-muted-foreground">
+                      <span>📅 {listDate(job.scheduled_date) || "—"}</span>
+                      {Number(job.estimate) > 0 && <span>{fmtMoney(job.estimate)}</span>}
+                    </div>
+                    {canEdit && (
+                      <div className="mt-2 flex flex-wrap gap-1 border-t pt-2 md:hidden">
+                        {BOARD_COLS.filter((c) => c.id !== job.status).map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onMove(job.id, c.id); }}
+                            className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground active:bg-accent"
+                          >
+                            → {c.title}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {cards.length === 0 && (
+                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+                    {canEdit ? "Drop jobs here" : "No jobs"}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

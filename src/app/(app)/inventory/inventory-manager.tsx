@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { SlideOver } from "@/components/slide-over";
 import { RowContextMenu, DeleteConfirm, type ContextMenuState } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
-import { fmtMoney } from "@/lib/utils";
+import { fmtMoney, cn } from "@/lib/utils";
 import { Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Package } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { MobileList, MobileListRow, MobileRowMenu } from "@/components/mobile-list";
@@ -32,6 +33,8 @@ export function InventoryManager({
   initialItems: Item[]; canEdit: boolean; canDelete: boolean;
 }) {
   const { toast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [items, setItems] = React.useState<Item[]>(initialItems);
   const [q, setQ] = React.useState("");
   const [sortKey, setSortKey] = React.useState<SortKey>("name");
@@ -71,6 +74,29 @@ export function InventoryManager({
     });
     return list;
   }, [items, q, sortKey, sortDir]);
+
+  // Open the add slide-over when arrived via ⌘K / "New inventory item".
+  React.useEffect(() => {
+    if (searchParams.get("new") === "1" && canEdit) {
+      startNew();
+      router.replace("/inventory");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Headline stats, computed from the full catalog (not the filtered view).
+  const stats = React.useMemo(() => {
+    const totalSkus = items.length;
+    const stockValue = items.reduce((s, i) => s + Number(i.cost) * Number(i.stock), 0);
+    const belowReorder = items.filter((i) => i.stock <= i.low_threshold).length;
+    const outOfStock = items.filter((i) => i.stock === 0).length;
+    return [
+      { label: "Total SKUs", value: String(totalSkus), tone: "text-foreground" },
+      { label: "Stock value", value: fmtMoney(stockValue), tone: "text-foreground" },
+      { label: "Below reorder", value: String(belowReorder), tone: belowReorder > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground" },
+      { label: "Out of stock", value: String(outOfStock), tone: outOfStock > 0 ? "text-rose-600 dark:text-rose-400" : "text-foreground" },
+    ];
+  }, [items]);
 
   function startNew() { setEditing(null); setForm(blank); setOpen(true); }
   function startEdit(i: Item) {
@@ -123,6 +149,18 @@ export function InventoryManager({
 
   return (
     <>
+      {/* Headline stats */}
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {stats.map((s) => (
+          <Card key={s.label}>
+            <CardContent className="p-3">
+              <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">{s.label}</div>
+              <div className={cn("mt-1 font-mono text-xl font-semibold", s.tone)}>{s.value}</div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       <div className="mb-4 flex items-center justify-between gap-2">
         <div className="relative w-64">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

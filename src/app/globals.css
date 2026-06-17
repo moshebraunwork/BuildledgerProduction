@@ -66,10 +66,10 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    /* Normal system font stack, normal text size — as requested */
-    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-      Roboto, Helvetica, Arial, sans-serif;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    /* Inter for UI text, with the system stack as a graceful fallback. */
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-feature-settings: "cv11" 1, "ss01" 1, "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     /* Remove the grey flash when tapping buttons/links on touch devices. */
@@ -221,4 +221,35 @@
   .tab-ball {
     transition: none;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Shared UI animations (command palette, status bar, dashboard, kanban)
+   Mirrors the polished "Workstock" prototype: a soft fade-in, a slow pulse for
+   the live "connected" dot, and a left-anchored grow for utilisation bars.
+--------------------------------------------------------------------------- */
+@keyframes ws-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ws-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@keyframes ws-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.ws-fade { animation: ws-fade 0.2s ease-out; }
+.ws-pulse { animation: ws-pulse 1.8s ease-in-out infinite; }
+.ws-grow { transform-origin: left; animation: ws-grow 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-fade, .ws-pulse, .ws-grow { animation: none; }
+}
+
+/* Monospace helper that prefers JetBrains Mono (loaded in the root layout). */
+.font-jb {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
 }
