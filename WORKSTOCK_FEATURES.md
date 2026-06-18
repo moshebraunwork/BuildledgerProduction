@@ -123,3 +123,26 @@ guarded so the app still runs before the migration is applied.
   My Settings (you only see the control for the device you're on).
 - **Status footer bar removed.**
 - **Admin area hidden on mobile** (desktop-only management).
+
+---
+
+## Phase 3 — chat upgrade
+
+Requires running **migration `0017_job_chat_pro.sql`** in Neon (adds read/seen
+state + typing to `job_chat_participants`, edit/delete/reply columns to
+`job_chat_messages`, and a `job_chat_reactions` table). All code is guarded so
+the existing chat keeps working before the migration is applied.
+
+The per-job chat now has:
+- **Delivery + read receipts** — every message shows ✓ sent, ✓✓ delivered,
+  ✓✓ (blue) read; a status line under your latest message ("Sent" / "Delivered"
+  / "Read by …"), and a **Message info** dialog listing each person's
+  delivered/read state with timestamps.
+- **Emoji reactions** — quick-react from the message menu; tap a chip to toggle.
+- **Replies** — quote and reply to any message; the quote shows in the bubble.
+- **Edit & delete** — edit your own messages (shows "edited"); delete leaves a
+  tombstone and pulls any shared file from the job's media.
+- **Typing indicators** — "X is typing…" in the thread header.
+- **Unread badges** on the chat list, bold unread rows, and **date separators**
+  (Today / Yesterday / date) plus sender avatars and message grouping for
+  clarity.
