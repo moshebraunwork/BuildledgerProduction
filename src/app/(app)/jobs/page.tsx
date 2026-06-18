@@ -2,6 +2,7 @@ import { requirePermission } from "@/lib/guard";
 import { sql } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { JobsManager } from "./jobs-manager";
+import { listJobStatuses } from "./status-actions";
 import type { EmpPin } from "@/app/(app)/map/map-view";
 
 export default async function JobsPage() {
@@ -11,6 +12,8 @@ export default async function JobsPage() {
     from public.jobs where company_id = ${user.companyId}
     order by created_at desc
   `;
+
+  const statuses = await listJobStatuses(user.companyId);
 
   const c = (perm: string) => can(user.isSuperadmin, user.permissions, perm);
   const canMap = c("map.view");
@@ -43,6 +46,8 @@ export default async function JobsPage() {
       canMap={canMap}
       canSeeEmployees={canSeeEmployees}
       employeePins={employeePins}
+      initialStatuses={statuses}
+      canManageStatuses={c("jobs.statuses")}
     />
   );
 }

@@ -4,11 +4,11 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createJob, deleteJob } from "./actions";
 import { setJobStatus } from "./[id]/actions";
+import { createJobStatus, deleteJobStatus, type JobStatus } from "./status-actions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SlideOver } from "@/components/slide-over";
@@ -18,15 +18,11 @@ import { EmptyState } from "@/components/empty-state";
 import { fmtMoney, fmtDate, cn } from "@/lib/utils";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { MapView, type JobPin, type EmpPin } from "@/app/(app)/map/map-view";
-import { Plus, Search, Hammer, SlidersHorizontal, Check, Map as MapIcon, List as ListIcon, LayoutGrid, GripVertical } from "lucide-react";
+import { Plus, Search, Hammer, SlidersHorizontal, Check, Map as MapIcon, List as ListIcon, LayoutGrid, GripVertical, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 
-// Kanban columns map 1:1 to the real job statuses the backend accepts.
-const BOARD_COLS: { id: string; title: string; dot: string }[] = [
-  { id: "scheduled", title: "Scheduled", dot: "bg-sky-500" },
-  { id: "active", title: "In progress", dot: "bg-emerald-500" },
-  { id: "complete", title: "Completed", dot: "bg-zinc-400" },
-];
+const VIEW_KEY = "buildledger.jobs.layout";
+const MOBILE_VIEW_KEY = "buildledger.jobs.mobileView";
 
 interface Job {
   id: string; title: string; place: string | null; scheduled_date: string | null;
@@ -34,15 +30,6 @@ interface Job {
   lat: number | null; lng: number | null;
 }
 
-const statusVariant: Record<string, "secondary" | "default" | "success"> = {
-  scheduled: "secondary", active: "default", complete: "success",
-};
-// Mobile list rows signal status with a colored dot, like presence in a chat app.
-const statusDot: Record<string, string> = {
-  scheduled: "bg-sky-500",
-  active: "bg-emerald-500",
-  complete: "bg-zinc-300 dark:bg-zinc-600",
-};
 // Compact, relative date for the right edge of a mobile row ("Today", "Thu", "May 29").
 function listDate(iso: string | null) {
   if (!iso) return "";
@@ -68,9 +55,6 @@ const SORT_OPTIONS: { v: string; l: string }[] = [
   { v: "estimate_asc", l: "Estimate (low–high)" },
   { v: "status_asc", l: "Status" },
 ];
-const STATUS_FILTERS: { v: string; l: string }[] = [
-  { v: "all", l: "All" }, { v: "scheduled", l: "Scheduled" }, { v: "active", l: "Active" }, { v: "complete", l: "Complete" },
-];
 const blank = {
   title: "", place: "", scheduled_date: "", customer_name: "", customer_email: "",
   estimate: 0, billing_mode: "itemized",
@@ -79,17 +63,31 @@ const blank = {
 
 export function JobsManager({
   initialJobs, canEdit, canDelete, canMap = false, canSeeEmployees = false, employeePins = [],
+  initialStatuses = [], canManageStatuses = false,
 }: {
   initialJobs: Job[]; canEdit: boolean; canDelete?: boolean;
   canMap?: boolean; canSeeEmployees?: boolean; employeePins?: EmpPin[];
+  initialStatuses?: JobStatus[]; canManageStatuses?: boolean;
 }) {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [jobs, setJobs] = React.useState<Job[]>(initialJobs);
+  const [statuses, setStatuses] = React.useState<JobStatus[]>(initialStatuses);
   // List vs. Kanban board layout (Map stays a sub-toggle of the list layout).
   const [layout, setLayout] = React.useState<"list" | "board">("list");
   const [dragId, setDragId] = React.useState<string | null>(null);
+
+  // Lookup helpers for status label/color (works for built-in + custom).
+  const statusMeta = React.useCallback(
+    (key: string) => statuses.find((s) => s.key === key) ?? { key, label: key, color: "#71717a" } as Partial<JobStatus> & { key: string; label: string; color: string },
+    [statuses]
+  );
+  // Status filter chips, derived from the company's statuses.
+  const statusFilters = React.useMemo(
+    () => [{ v: "all", l: "All" }, ...statuses.map((s) => ({ v: s.key, l: s.label }))],
+    [statuses]
+  );
 
   // Job markers for the embedded map — every job that has coordinates.
   const jobPins = React.useMemo<JobPin[]>(
@@ -111,6 +109,20 @@ export function JobsManager({
   // scroll the row into view) without feedback loops.
   const [hover, setHover] = React.useState<{ id: string; source: "table" | "map" } | null>(null);
   const [mobileView, setMobileView] = React.useState<"list" | "map">("list");
+  // Remember the last view mode across visits.
+  React.useEffect(() => {
+    try {
+      const l = window.localStorage.getItem(VIEW_KEY);
+      if (l === "list" || l === "board") setLayout(l);
+      const mv = window.localStorage.getItem(MOBILE_VIEW_KEY);
+      if (mv === "list" || mv === "map") setMobileView(mv);
+    } catch { /* ignore */ }
+  }, []);
+  React.useEffect(() => { try { window.localStorage.setItem(VIEW_KEY, layout); } catch {} }, [layout]);
+  React.useEffect(() => { try { window.localStorage.setItem(MOBILE_VIEW_KEY, mobileView); } catch {} }, [mobileView]);
+  const [statusMgrOpen, setStatusMgrOpen] = React.useState(false);
+  const [newStatusLabel, setNewStatusLabel] = React.useState("");
+  const [newStatusColor, setNewStatusColor] = React.useState("#6366f1");
   const [fsOpen, setFsOpen] = React.useState(false);
   const fsRef = React.useRef<HTMLDivElement>(null);
   // Track the mobile header height so we can push the list below it.
@@ -155,6 +167,26 @@ export function JobsManager({
       setJobs((jj) => jj.map((j) => (j.id === jobId ? { ...j, status: job.status } : j)));
       toast({ title: "Could not move job", description: (res as any).error, variant: "destructive" });
     }
+  }
+
+  // Add a custom status (board column).
+  async function addStatus() {
+    const label = newStatusLabel.trim();
+    if (!label) return;
+    const res = await createJobStatus(label, newStatusColor);
+    if ((res as any).error) return toast({ title: "Could not add status", description: (res as any).error, variant: "destructive" });
+    setStatuses((s) => [...s, (res as any).data as JobStatus]);
+    setNewStatusLabel("");
+    toast({ title: "Status added" });
+  }
+
+  async function removeStatus(s: JobStatus) {
+    const res = await deleteJobStatus(s.id);
+    if ((res as any).error) return toast({ title: "Could not remove", description: (res as any).error, variant: "destructive" });
+    setStatuses((list) => list.filter((x) => x.id !== s.id));
+    // Jobs in that status are moved to "scheduled" server-side.
+    setJobs((jj) => jj.map((j) => (j.status === s.key ? { ...j, status: "scheduled" } : j)));
+    toast({ title: "Status removed" });
   }
 
   const filtered = React.useMemo(() => {
@@ -285,28 +317,31 @@ export function JobsManager({
       >
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Jobs</h1>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setLayout((l) => (l === "board" ? "list" : "board"))}
-              className={cn(
-                "flex h-10 w-10 items-center justify-center rounded-full transition-colors active:bg-accent",
-                layout === "board" ? "text-primary" : "text-muted-foreground"
-              )}
-              aria-label={layout === "board" ? "Show list" : "Show board"}
-            >
-              {layout === "board" ? <ListIcon className="h-5 w-5" /> : <LayoutGrid className="h-5 w-5" />}
-            </button>
-            {canMap && layout === "list" && (
-              <button
-                type="button"
-                onClick={() => setMobileView((v) => (v === "list" ? "map" : "list"))}
-                className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-accent"
-                aria-label={mobileView === "list" ? "Show map" : "Show list"}
-              >
-                {mobileView === "list" ? <MapIcon className="h-5 w-5" /> : <ListIcon className="h-5 w-5" />}
-              </button>
-            )}
+          {/* List / Board / Map switch */}
+          <div className="flex items-center rounded-lg border bg-muted/40 p-0.5">
+            {([
+              { v: "list", Icon: ListIcon, show: true, onPick: () => { setLayout("list"); setMobileView("list"); } },
+              { v: "board", Icon: LayoutGrid, show: true, onPick: () => setLayout("board") },
+              { v: "map", Icon: MapIcon, show: canMap, onPick: () => { setLayout("list"); setMobileView("map"); } },
+            ] as const)
+              .filter((o) => o.show)
+              .map((o) => {
+                const current = layout === "board" ? "board" : mobileView;
+                return (
+                  <button
+                    key={o.v}
+                    type="button"
+                    onClick={o.onPick}
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-md transition-colors",
+                      current === o.v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
+                    )}
+                    aria-label={o.v}
+                  >
+                    <o.Icon className="h-5 w-5" />
+                  </button>
+                );
+              })}
           </div>
         </div>
         <div className="relative">
@@ -320,7 +355,7 @@ export function JobsManager({
         </div>
         {layout === "list" && mobileView === "list" && (
           <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {STATUS_FILTERS.map((s) => (
+            {statusFilters.map((s) => (
               <button
                 key={s.v}
                 type="button"
@@ -345,9 +380,12 @@ export function JobsManager({
         <JobsBoard
           jobs={jobs}
           q={q}
+          statuses={statuses}
           onOpen={openJob}
           onMove={changeStatus}
           canEdit={canEdit}
+          canManageStatuses={canManageStatuses}
+          onAddStatus={() => setStatusMgrOpen(true)}
           dragId={dragId}
           setDragId={setDragId}
         />
@@ -387,7 +425,7 @@ export function JobsManager({
             <div className="absolute right-0 z-40 mt-1 w-64 rounded-md border bg-popover p-3 shadow-lg">
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
               <div className="flex flex-wrap gap-1.5">
-                {STATUS_FILTERS.map((s) => (
+                {statusFilters.map((s) => (
                   <button
                     key={s.v}
                     type="button"
@@ -446,7 +484,12 @@ export function JobsManager({
                     <TableCell className="text-sm">{fmtDate(j.scheduled_date)}</TableCell>
                     <TableCell>{fmtMoney(j.estimate)}</TableCell>
                     <TableCell className="text-sm capitalize">{j.billing_mode}</TableCell>
-                    <TableCell><Badge variant={statusVariant[j.status] ?? "secondary"} className="capitalize">{j.status}</Badge></TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium" style={{ borderColor: `${statusMeta(j.status).color}55`, color: statusMeta(j.status).color }}>
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: statusMeta(j.status).color }} />
+                        {statusMeta(j.status).label}
+                      </span>
+                    </TableCell>
                   </TableRow>
                 ))}
                 {filtered.length === 0 && (
@@ -484,7 +527,7 @@ export function JobsManager({
             className="flex w-full items-stretch gap-3 overflow-hidden rounded-2xl border bg-card text-left shadow-sm transition-colors active:bg-accent"
           >
             {/* Status stripe down the left edge of the frame */}
-            <span className={cn("w-1.5 shrink-0", statusDot[j.status] ?? "bg-zinc-300")} aria-hidden />
+            <span className="w-1.5 shrink-0" style={{ background: statusMeta(j.status).color }} aria-hidden />
             <div className="min-w-0 flex-1 py-3 pr-3">
               <div className="flex items-baseline justify-between gap-2">
                 <p className="truncate text-[15px] font-semibold">{j.title}</p>
@@ -496,7 +539,10 @@ export function JobsManager({
                 {[j.customer_name, j.place].filter(Boolean).join(" · ") || "No customer or location"}
               </p>
               <div className="mt-2 flex items-center justify-between gap-2">
-                <Badge variant={statusVariant[j.status] ?? "secondary"} className="capitalize">{j.status}</Badge>
+                <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium" style={{ borderColor: `${statusMeta(j.status).color}55`, color: statusMeta(j.status).color }}>
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: statusMeta(j.status).color }} />
+                  {statusMeta(j.status).label}
+                </span>
                 {Number(j.estimate) > 0 && (
                   <span className="text-sm font-medium tabular-nums">{fmtMoney(j.estimate)}</span>
                 )}
@@ -602,21 +648,74 @@ export function JobsManager({
           </div>
         </div>
       </SlideOver>
+
+      {/* Manage job statuses (board columns) */}
+      <SlideOver
+        open={statusMgrOpen}
+        onClose={() => setStatusMgrOpen(false)}
+        title="Job statuses"
+        footer={<div className="flex justify-end"><Button variant="outline" onClick={() => setStatusMgrOpen(false)}>Done</Button></div>}
+      >
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <Label>Add a status</Label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={newStatusColor}
+                onChange={(e) => setNewStatusColor(e.target.value)}
+                className="h-10 w-12 shrink-0 cursor-pointer rounded-md border bg-transparent p-1"
+                aria-label="Status color"
+              />
+              <Input
+                value={newStatusLabel}
+                onChange={(e) => setNewStatusLabel(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") addStatus(); }}
+                placeholder="e.g. Awaiting parts"
+                className="min-h-[44px]"
+              />
+              <Button onClick={addStatus} disabled={!newStatusLabel.trim()}><Plus className="h-4 w-4" /></Button>
+            </div>
+            <p className="text-xs text-muted-foreground">New statuses become columns on the board.</p>
+          </div>
+          <div className="space-y-2">
+            <Label>Current statuses</Label>
+            <div className="space-y-1.5">
+              {statuses.map((s) => (
+                <div key={s.id} className="flex items-center gap-2 rounded-md border px-3 py-2">
+                  <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: s.color }} />
+                  <span className="flex-1 text-sm">{s.label}</span>
+                  {s.is_system ? (
+                    <span className="font-mono text-[10px] uppercase text-muted-foreground">built-in</span>
+                  ) : (
+                    <button type="button" onClick={() => removeStatus(s)} className="text-muted-foreground hover:text-destructive" aria-label={`Remove ${s.label}`}>
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </SlideOver>
     </>
   );
 }
 
-// Kanban board — columns are the real job statuses. Desktop reorders by native
-// drag-and-drop; touch devices get per-card "move" chips (drag is unreliable on
-// mobile). Both paths call the same `onMove` (setJobStatus) used elsewhere.
+// Kanban board — columns are the company's configured job statuses (built-in +
+// custom). Desktop reorders by native drag-and-drop; touch devices get per-card
+// "move" chips. Both paths call the same `onMove` (setJobStatus).
 function JobsBoard({
-  jobs, q, onOpen, onMove, canEdit, dragId, setDragId,
+  jobs, q, statuses, onOpen, onMove, canEdit, canManageStatuses, onAddStatus, dragId, setDragId,
 }: {
   jobs: Job[];
   q: string;
+  statuses: JobStatus[];
   onOpen: (job: Job) => void;
   onMove: (jobId: string, status: string) => void;
   canEdit: boolean;
+  canManageStatuses: boolean;
+  onAddStatus: () => void;
   dragId: string | null;
   setDragId: (id: string | null) => void;
 }) {
@@ -627,28 +726,28 @@ function JobsBoard({
 
   return (
     <div className="ws-fade -mx-1 overflow-x-auto pb-4">
-      <div className="flex gap-3 px-1 md:grid md:grid-cols-3">
-        {BOARD_COLS.map((col) => {
-          const cards = visible.filter((j) => j.status === col.id);
+      <div className="flex items-start gap-3 px-1">
+        {statuses.map((col) => {
+          const cards = visible.filter((j) => j.status === col.key);
           return (
             <div
-              key={col.id}
+              key={col.key}
               onDragOver={canEdit ? (e) => e.preventDefault() : undefined}
               onDrop={
                 canEdit
                   ? (e) => {
                       e.preventDefault();
                       const id = e.dataTransfer.getData("text/plain") || dragId;
-                      if (id) onMove(id, col.id);
+                      if (id) onMove(id, col.key);
                       setDragId(null);
                     }
                   : undefined
               }
-              className="flex w-[80vw] max-w-[20rem] shrink-0 flex-col rounded-xl border bg-muted/30 md:w-auto md:max-w-none"
+              className="flex w-[80vw] max-w-[20rem] shrink-0 flex-col rounded-xl border bg-muted/30 md:w-72"
             >
               <div className="flex items-center gap-2 border-b px-3 py-2.5">
-                <span className={cn("h-2 w-2 rounded-full", col.dot)} />
-                <span className="text-sm font-semibold uppercase tracking-wide">{col.title}</span>
+                <span className="h-2 w-2 rounded-full" style={{ background: col.color }} />
+                <span className="truncate text-sm font-semibold uppercase tracking-wide">{col.label}</span>
                 <span className="ml-auto rounded-full bg-background px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">{cards.length}</span>
               </div>
               <div className="flex min-h-[6rem] flex-1 flex-col gap-2 p-2">
@@ -682,14 +781,14 @@ function JobsBoard({
                     </div>
                     {canEdit && (
                       <div className="mt-2 flex flex-wrap gap-1 border-t pt-2 md:hidden">
-                        {BOARD_COLS.filter((c) => c.id !== job.status).map((c) => (
+                        {statuses.filter((c) => c.key !== job.status).map((c) => (
                           <button
-                            key={c.id}
+                            key={c.key}
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); onMove(job.id, c.id); }}
+                            onClick={(e) => { e.stopPropagation(); onMove(job.id, c.key); }}
                             className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground active:bg-accent"
                           >
-                            → {c.title}
+                            → {c.label}
                           </button>
                         ))}
                       </div>
@@ -705,6 +804,17 @@ function JobsBoard({
             </div>
           );
         })}
+
+        {/* Add / manage status column */}
+        {canManageStatuses && (
+          <button
+            type="button"
+            onClick={onAddStatus}
+            className="flex w-[60vw] max-w-[14rem] shrink-0 items-center justify-center gap-2 rounded-xl border border-dashed py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground md:w-56"
+          >
+            <Plus className="h-4 w-4" /> Add status
+          </button>
+        )}
       </div>
     </div>
   );

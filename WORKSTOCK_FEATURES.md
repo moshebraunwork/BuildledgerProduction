@@ -92,3 +92,34 @@ need data the app doesn't model yet:
   derivable from punches; left out to avoid half-wiring).
 
 See the chat thread for the original side-by-side comparison.
+
+---
+
+## Phase 2 — follow-up changes
+
+Requires running **migration `0016_workstock_phase2.sql`** in Neon (adds
+`users.font_scale_*`, `users.notifications_read_at`, `roles.notification_prefs`,
+and the `job_statuses` table; seeds the three built-in statuses). All code is
+guarded so the app still runs before the migration is applied.
+
+- **Top bar trimmed** — removed the global search bar and the header "New job"
+  button. Search now lives only in the sidebar (desktop) / top bar (mobile),
+  using a **command icon**.
+- **Notifications now work** — the bell shows real activity (derived from the
+  activity log), with an unread badge and mark-as-read. Admins choose, **per
+  role on the Roles screen**, which categories that role is notified about.
+- **Mobile Jobs view switch** is now List / Board / Map (Map was previously
+  unreachable from the board).
+- **Custom job statuses** — users with the new `jobs.statuses` permission can
+  add/remove board columns; each becomes a new section in the board. Statuses
+  are per-company and drive the board, filters and status pills.
+- **View mode is remembered** per page (Jobs list/board/map, Team list/map) via
+  localStorage.
+- **Customer detail** — clicking a customer opens contact info, all their jobs,
+  and all their invoices (with links).
+- **One font everywhere** — Inter across the whole app (numbers included);
+  JetBrains Mono removed.
+- **Per-account font size**, separate for desktop and mobile — set in
+  My Settings (you only see the control for the device you're on).
+- **Status footer bar removed.**
+- **Admin area hidden on mobile** (desktop-only management).

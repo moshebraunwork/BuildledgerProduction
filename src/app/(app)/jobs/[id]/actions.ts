@@ -275,8 +275,14 @@ export async function generateInvoice(params: { jobId: string; excludeStoreTime?
 export async function setJobStatus(jobId: string, status: string) {
   const user = await requireUser("jobs.edit");
   if (!user) return { error: "Forbidden" };
-  // Whitelist the status values the UI can set.
-  if (!["scheduled", "active", "complete"].includes(status)) return { error: "Invalid status" };
+  // Validate against the company's configured statuses (custom statuses added in
+  // migration 0016). Fall back to the three built-ins if the table isn't there.
+  let valid = ["scheduled", "active", "complete"];
+  try {
+    const rows = (await sql`select key from public.job_statuses where company_id = ${user.companyId}`) as any[];
+    if (rows.length) valid = rows.map((r) => r.key as string);
+  } catch { /* table not present yet — use built-ins */ }
+  if (!valid.includes(status)) return { error: "Invalid status" };
   const before = await sql`select title, status from public.jobs where id = ${jobId} and company_id = ${user.companyId} limit 1`;
   await sql`update public.jobs set status = ${status} where id = ${jobId} and company_id = ${user.companyId}`;
   await auditUser(user, {

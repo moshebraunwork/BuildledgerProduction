@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { PERMISSION_GROUPS, type PermissionMap } from "@/lib/permissions";
+import { NOTIFICATION_TYPES } from "@/lib/notifications";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,10 +13,11 @@ import { Badge } from "@/components/ui/badge";
 import { SlideOver } from "@/components/slide-over";
 import { DeleteConfirm } from "@/components/row-actions";
 import { useToast } from "@/components/ui/use-toast";
-import { Plus, Pencil, Trash2, Lock, MapPin } from "lucide-react";
+import { Plus, Pencil, Trash2, Lock, MapPin, Bell } from "lucide-react";
 import { createRole, updateRole, deleteRole } from "./actions";
 
-interface Role { id: string; name: string; permissions: PermissionMap; is_system: boolean; require_location?: boolean; }
+type NotifPrefs = Record<string, boolean>;
+interface Role { id: string; name: string; permissions: PermissionMap; is_system: boolean; require_location?: boolean; notification_prefs?: NotifPrefs; }
 
 export function RolesManager({ initialRoles }: { initialRoles: Role[] }) {
   const { toast } = useToast();
@@ -25,12 +27,16 @@ export function RolesManager({ initialRoles }: { initialRoles: Role[] }) {
   const [name, setName] = React.useState("");
   const [perms, setPerms] = React.useState<PermissionMap>({});
   const [requireLocation, setRequireLocation] = React.useState(false);
+  const [notifPrefs, setNotifPrefs] = React.useState<NotifPrefs>({});
   const [saving, setSaving] = React.useState(false);
   const [toDelete, setToDelete] = React.useState<Role | null>(null);
 
-  function startNew() { setEditing(null); setName(""); setPerms({}); setRequireLocation(false); setOpen(true); }
-  function startEdit(r: Role) { setEditing(r); setName(r.name); setPerms({ ...r.permissions }); setRequireLocation(!!r.require_location); setOpen(true); }
+  function startNew() { setEditing(null); setName(""); setPerms({}); setRequireLocation(false); setNotifPrefs({}); setOpen(true); }
+  function startEdit(r: Role) { setEditing(r); setName(r.name); setPerms({ ...r.permissions }); setRequireLocation(!!r.require_location); setNotifPrefs({ ...(r.notification_prefs ?? {}) }); setOpen(true); }
   function toggle(key: string) { setPerms((p) => ({ ...p, [key]: !p[key] })); }
+  // Opt-out model: a missing key means "on".
+  function notifOn(key: string) { return notifPrefs[key] !== false; }
+  function toggleNotif(key: string) { setNotifPrefs((p) => ({ ...p, [key]: p[key] === false ? true : false })); }
 
   // Quick helper: toggle all perms in a module group at once
   function toggleGroup(keys: string[], value: boolean) {
@@ -42,13 +48,13 @@ export function RolesManager({ initialRoles }: { initialRoles: Role[] }) {
     setSaving(true);
     const clean: PermissionMap = Object.fromEntries(Object.entries(perms).filter(([, v]) => v));
     if (editing) {
-      const res = await updateRole(editing.id, name.trim(), clean, requireLocation);
+      const res = await updateRole(editing.id, name.trim(), clean, requireLocation, notifPrefs);
       setSaving(false);
       if (res.error) return toast({ title: "Save failed", description: res.error, variant: "destructive" });
-      setRoles((rs) => rs.map((r) => (r.id === editing.id ? { ...r, name: name.trim(), permissions: clean, require_location: requireLocation } : r)));
+      setRoles((rs) => rs.map((r) => (r.id === editing.id ? { ...r, name: name.trim(), permissions: clean, require_location: requireLocation, notification_prefs: notifPrefs } : r)));
       toast({ title: "Role updated" });
     } else {
-      const res = await createRole(name.trim(), clean, requireLocation);
+      const res = await createRole(name.trim(), clean, requireLocation, notifPrefs);
       setSaving(false);
       if (res.error) return toast({ title: "Create failed", description: res.error, variant: "destructive" });
       setRoles((rs) => [...rs, res.data as Role]);
@@ -160,6 +166,25 @@ export function RolesManager({ initialRoles }: { initialRoles: Role[] }) {
               </span>
               <Switch checked={requireLocation} onCheckedChange={setRequireLocation} />
             </label>
+          </div>
+
+          {/* Notification subscriptions for this role. */}
+          <div className="rounded-md border p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <Bell className="h-4 w-4 text-primary" />
+              <h4 className="text-sm font-semibold">Notifications</h4>
+            </div>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Choose which activity members with this role are notified about (shown in the bell).
+            </p>
+            <div className="space-y-2">
+              {NOTIFICATION_TYPES.map((t) => (
+                <label key={t.key} className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                  <span>{t.label}</span>
+                  <Switch checked={notifOn(t.key)} onCheckedChange={() => toggleNotif(t.key)} />
+                </label>
+              ))}
+            </div>
           </div>
         </div>
       </SlideOver>

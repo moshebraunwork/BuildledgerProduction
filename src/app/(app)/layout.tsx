@@ -12,7 +12,7 @@ import { AskAiProvider } from "@/components/ask-ai/ask-ai-context";
 import { LocationTracker } from "@/components/location/location-tracker";
 import { CommandPaletteProvider } from "@/components/command-palette";
 import { AppHeader } from "@/components/app-header";
-import { StatusBar } from "@/components/status-bar";
+import { ApplyFontScale } from "@/components/apply-font-scale";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -80,18 +80,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   let companyName = "BuildLedger";
   let openJobsCount = 0;
   let lowStockCount = 0;
-  let employeeCount = 0;
   try {
-    const [companyRows, openJobs, lowStock, emps] = await Promise.all([
+    const [companyRows, openJobs, lowStock] = await Promise.all([
       sql`select name from public.companies where id = ${user.companyId} limit 1`,
       sql`select count(*)::int as n from public.jobs where company_id = ${user.companyId} and status <> 'complete'`,
       sql`select count(*)::int as n from public.items where company_id = ${user.companyId} and stock <= low_threshold`,
-      sql`select count(*)::int as n from public.employees where company_id = ${user.companyId}`,
     ]);
     companyName = (companyRows[0] as any)?.name ?? companyName;
     openJobsCount = (openJobs[0] as any)?.n ?? 0;
     lowStockCount = (lowStock[0] as any)?.n ?? 0;
-    employeeCount = (emps[0] as any)?.n ?? 0;
   } catch { /* shell still renders without counts */ }
 
   const navBadges: Record<string, number> = {
@@ -115,6 +112,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <CommandPaletteProvider isSuperadmin={user.isSuperadmin} permissions={user.permissions}>
         <div className="flex h-[100dvh] overflow-hidden">
           <ApplyTheme theme={user.theme} />
+          <ApplyFontScale desktop={user.fontScaleDesktop} mobile={user.fontScaleMobile} />
           {/* Location-required roles are tracked + gated here (superadmin exempt). */}
           <LocationTracker required={user.requireLocation && !user.isSuperadmin} />
           <Sidebar
@@ -131,12 +129,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               email={user.email}
               fullName={user.fullName}
             />
-            <AppHeader companyName={companyName} canEditJobs={c("jobs.edit")} />
+            <AppHeader companyName={companyName} />
             <main id="app-main" className="flex-1 overflow-y-auto overscroll-contain-y p-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:bg-gradient-to-br md:from-background md:via-background md:to-primary/5 md:p-8 md:pb-8">
               <ScrollReset targetId="app-main" />
               <PageTransition>{children}</PageTransition>
             </main>
-            <StatusBar plan={companyName} employeeCount={employeeCount} />
           </div>
           <MobileTabBar isSuperadmin={user.isSuperadmin} permissions={user.permissions} />
         </div>

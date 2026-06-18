@@ -42,14 +42,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <ClerkProvider>
       <html lang="en" suppressHydrationWarning>
         <head>
-          {/* Inter (UI) + JetBrains Mono (numbers / metadata) — loaded at runtime
-              so the build never depends on font network access. Falls back to the
+          {/* Inter — one clean typeface for the whole app, loaded at runtime so
+              the build never depends on font network access. Falls back to the
               system stack gracefully if Google Fonts is unreachable. */}
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
           <link
             rel="stylesheet"
-            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
           />
         </head>
         <body>
