@@ -24,13 +24,12 @@ import {
 const COLLAPSED_KEY = "buildledger.sidebar.collapsed";
 
 export function Sidebar({
-  isSuperadmin, permissions, email, fullName, badges = {},
+  isSuperadmin, permissions, email, fullName,
 }: {
   isSuperadmin: boolean;
   permissions: PermissionMap;
   email: string;
   fullName: string | null;
-  badges?: Record<string, number>;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -204,15 +203,7 @@ export function Sidebar({
             >
               {active && !collapsed && <span className="absolute inset-y-1 left-0 w-1 rounded-r-full bg-gradient-to-b from-primary to-violet-500 shadow-[0_0_8px_hsl(var(--primary)/0.5)]" />}
               <Icon className={cn("h-4 w-4 shrink-0 transition-transform", active && "scale-110")} />
-              {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-              {!collapsed && badges[item.href] > 0 && (
-                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
-                  {badges[item.href]}
-                </span>
-              )}
-              {!collapsed && item.shortcut && !(badges[item.href] > 0) && (
-                <span className="font-mono text-[10px] text-muted-foreground/70">{item.shortcut}</span>
-              )}
+              {!collapsed && <span className="truncate">{item.label}</span>}
             </Link>
           );
         })}

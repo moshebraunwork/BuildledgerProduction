@@ -75,26 +75,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const c = (perm: string) => can(user.isSuperadmin, user.permissions, perm);
 
-  // Shell context: company name for the breadcrumb/footer, plus the live nav
-  // badge counts (open jobs, low stock) shown in the sidebar.
+  // Company name for the breadcrumb in the desktop header.
   let companyName = "BuildLedger";
-  let openJobsCount = 0;
-  let lowStockCount = 0;
   try {
-    const [companyRows, openJobs, lowStock] = await Promise.all([
-      sql`select name from public.companies where id = ${user.companyId} limit 1`,
-      sql`select count(*)::int as n from public.jobs where company_id = ${user.companyId} and status <> 'complete'`,
-      sql`select count(*)::int as n from public.items where company_id = ${user.companyId} and stock <= low_threshold`,
-    ]);
+    const companyRows = await sql`select name from public.companies where id = ${user.companyId} limit 1`;
     companyName = (companyRows[0] as any)?.name ?? companyName;
-    openJobsCount = (openJobs[0] as any)?.n ?? 0;
-    lowStockCount = (lowStock[0] as any)?.n ?? 0;
-  } catch { /* shell still renders without counts */ }
-
-  const navBadges: Record<string, number> = {
-    "/jobs": openJobsCount,
-    "/inventory": lowStockCount,
-  };
+  } catch { /* shell still renders without it */ }
 
   return (
     <AskAiProvider
@@ -120,7 +106,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             permissions={user.permissions}
             email={user.email}
             fullName={user.fullName}
-            badges={navBadges}
           />
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <MobileNav

@@ -60,8 +60,9 @@ const TOOLS: ToolDef[] = [
       ]);
       const areas: string[] = [];
       const map: Record<string, string> = {
+        "dashboard.view": "dashboard & KPIs",
         "logs.view": "activity log",
-        "jobs.view": "jobs",
+        "jobs.view": "jobs, schedule & customers",
         "invoices.view": "invoices",
         "inventory.view": "inventory",
         "employees.view": "employees",
@@ -122,18 +123,18 @@ const TOOLS: ToolDef[] = [
   // --------------------------------------------------------------------------
   {
     name: "list_jobs",
-    description: "List jobs with their status, customer, schedule and estimate. Use for questions about jobs, what's active/scheduled/complete, or finding a job by name.",
+    description: "List jobs with their status, customer, schedule and estimate. Use for questions about jobs, the schedule, what's active/scheduled/complete, or finding a job by name. Statuses are company-defined (the built-ins are scheduled, active, complete, but a company may add custom ones — call list_job_statuses to see them).",
     permission: "jobs.view",
     parameters: {
       type: "object",
       properties: {
-        status: { type: "string", description: "Filter by status: scheduled, active, or complete." },
+        status: { type: "string", description: "Filter by a status key (e.g. scheduled, active, complete, or a custom one)." },
         query: { type: "string", description: "Match against job title, place, or customer." },
         limit: { type: "number", description: "Max rows (default 25, max 50)." },
       },
     },
     async run(user, args) {
-      const status = ["scheduled", "active", "complete"].includes(args.status) ? args.status : null;
+      const status = typeof args.status === "string" && args.status.trim() ? args.status.trim() : null;
       const q = like(args.query);
       const limit = clampLimit(args.limit, 25, 50);
       const rows = await sql`
@@ -515,6 +516,111 @@ const TOOLS: ToolDef[] = [
       }
       located.sort((a, b) => a.distance_miles - b.distance_miles);
       return { from: { lat, lng }, nearest: located.slice(0, limit), unlocated };
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  {
+    name: "list_job_statuses",
+    description: "List the company's job statuses (the Kanban board columns), including any custom ones, with their label and color. Use to know which status keys are valid for list_jobs.",
+    permission: "jobs.view",
+    parameters: { type: "object", properties: {} },
+    async run(user) {
+      try {
+        const rows = await sql`
+          select key, label, color, position, is_system
+          from public.job_statuses where company_id = ${user.companyId}
+          order by position, label
+        `;
+        if (rows.length) return { count: rows.length, statuses: rows };
+      } catch { /* table not present yet */ }
+      return {
+        count: 3,
+        statuses: [
+          { key: "scheduled", label: "Scheduled", is_system: true },
+          { key: "active", label: "In progress", is_system: true },
+          { key: "complete", label: "Completed", is_system: true },
+        ],
+      };
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  {
+    name: "list_customers",
+    description: "List customers (derived from jobs) with job count, open jobs, lifetime value, contact email and last job date. Use for 'who are our top customers', customer lists, or per-customer totals.",
+    permission: "jobs.view",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Match against customer name." },
+        limit: { type: "number", description: "Max rows (default 30, max 100)." },
+      },
+    },
+    async run(user, args) {
+      const q = like(args.query);
+      const limit = clampLimit(args.limit, 30, 100);
+      const canInv = can(user.isSuperadmin, user.permissions, "invoices.view");
+      const jobAgg = (await sql`
+        select trim(customer_name) as name, count(*)::int as jobs,
+               count(*) filter (where status <> 'complete')::int as open_jobs,
+               max(customer_email) as email, max(scheduled_date) as last_job,
+               coalesce(sum(estimate), 0)::float as estimate
+        from public.jobs
+        where company_id = ${user.companyId} and customer_name is not null and trim(customer_name) <> ''
+          and (${q}::text is null or customer_name ilike ${q})
+        group by 1 order by jobs desc limit ${limit}
+      `) as any[];
+      const revByName = new Map<string, number>();
+      if (canInv) {
+        const rev = (await sql`
+          select trim(j.customer_name) as name, coalesce(sum(i.total), 0)::float as revenue
+          from public.invoices i join public.jobs j on j.id = i.job_id
+          where i.company_id = ${user.companyId} and i.status in ('sent', 'paid')
+            and j.customer_name is not null and trim(j.customer_name) <> ''
+          group by 1
+        `) as any[];
+        for (const r of rev) revByName.set(r.name, Number(r.revenue) || 0);
+      }
+      const customers = jobAgg.map((r) => ({
+        name: r.name,
+        email: r.email ?? null,
+        jobs: Number(r.jobs) || 0,
+        open_jobs: Number(r.open_jobs) || 0,
+        lifetime_value: canInv ? (revByName.get(r.name) || Number(r.estimate) || 0) : Number(r.estimate) || 0,
+        last_job: r.last_job ? new Date(r.last_job).toISOString().slice(0, 10) : null,
+      }));
+      return { count: customers.length, customers };
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  {
+    name: "get_dashboard_summary",
+    description: "Get the dashboard KPIs: job counts by status, revenue collected vs. outstanding, low-stock item count, employee count, and how many are clocked in right now.",
+    permission: "dashboard.view",
+    parameters: { type: "object", properties: {} },
+    async run(user) {
+      const [jobs, inv, items, emp, punches] = await Promise.all([
+        sql`select status, count(*)::int as n from public.jobs where company_id = ${user.companyId} group by status`,
+        sql`select status, coalesce(sum(total), 0)::float as total from public.invoices where company_id = ${user.companyId} group by status`,
+        sql`select count(*) filter (where stock <= low_threshold)::int as low, count(*)::int as total from public.items where company_id = ${user.companyId}`,
+        sql`select count(*)::int as n from public.employees where company_id = ${user.companyId}`,
+        sql`select count(*)::int as n from public.punches where company_id = ${user.companyId} and ended_at is null`,
+      ]);
+      const jobsByStatus: Record<string, number> = {};
+      for (const r of jobs as any[]) jobsByStatus[r.status] = Number(r.n);
+      const invByStatus: Record<string, number> = {};
+      for (const r of inv as any[]) invByStatus[r.status] = Number(r.total);
+      const canInv = can(user.isSuperadmin, user.permissions, "invoices.view");
+      return {
+        jobs_by_status: jobsByStatus,
+        ...(canInv ? { revenue_collected: invByStatus["paid"] ?? 0, revenue_outstanding: invByStatus["sent"] ?? 0 } : {}),
+        low_stock_items: (items as any[])[0]?.low ?? 0,
+        total_items: (items as any[])[0]?.total ?? 0,
+        employees: (emp as any[])[0]?.n ?? 0,
+        clocked_in_now: (punches as any[])[0]?.n ?? 0,
+      };
     },
   },
 ];
