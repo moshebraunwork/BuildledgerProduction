@@ -39,8 +39,28 @@ export interface ChatMessage {
   createdAt: string;
   editedAt: string | null;
   deleted: boolean;
+  important: boolean;
   replyTo: ReplyPreview | null;
   reactions: ChatReaction[];
+}
+
+export interface ScheduledMessage {
+  id: string;
+  body: string;
+  fileName: string | null;
+  important: boolean;
+  scheduledAt: string;
+}
+
+export interface ImportantAlert {
+  id: string;
+  body: string;
+  fileName: string | null;
+  senderName: string | null;
+  jobId: string;
+  jobTitle: string | null;
+  chatId: string;
+  createdAt: string;
 }
 
 export interface ChatParticipantState {
@@ -54,6 +74,7 @@ export interface ChatSync {
   messages: ChatMessage[];
   participants: ChatParticipantState[];
   typing: { id: string; name: string }[];
+  scheduled: ScheduledMessage[];
   me: string;
 }
 
@@ -91,6 +112,40 @@ function isMissingTable(e: unknown) {
   return /relation .* does not exist/i.test(String((e as any)?.message ?? ""));
 }
 
+// Release any due scheduled messages for a company into their chats. Runs
+// lazily on the next poll by any active user (no background worker needed).
+// Guarded so it's a no-op before 0018 is applied.
+async function releaseDueScheduled(companyId: string) {
+  try {
+    const due = (await sql`
+      select id, chat_id, job_id, sender_id, body, file_url, file_name, file_type, file_size, reply_to_id, important
+      from public.job_chat_scheduled
+      where company_id = ${companyId} and scheduled_at <= now()
+      order by scheduled_at asc limit 200
+    `) as any[];
+    for (const s of due) {
+      const ins = (await sql`
+        insert into public.job_chat_messages
+          (company_id, chat_id, sender_id, body, file_url, file_name, file_type, file_size, reply_to_id, important)
+        values (${companyId}, ${s.chat_id}, ${s.sender_id}, ${s.body}, ${s.file_url}, ${s.file_name},
+                ${s.file_type}, ${s.file_size}, ${s.reply_to_id}, ${s.important})
+        returning id
+      `) as any[];
+      if (s.file_url) {
+        const type = s.file_type ?? "";
+        const kind = type.startsWith("image/") ? "image" : type.startsWith("video/") ? "video" : "file";
+        await sql`
+          insert into public.job_files (company_id, job_id, name, url, content_type, size_bytes, kind, uploaded_by, chat_id)
+          values (${companyId}, ${s.job_id}, ${(s.file_name || "file")}, ${s.file_url}, ${s.file_type}, ${s.file_size}, ${kind}, ${s.sender_id}, ${s.chat_id})
+        `;
+      }
+      await sql`update public.job_chats set last_message_at = now() where id = ${s.chat_id}`;
+      await sql`delete from public.job_chat_scheduled where id = ${s.id}`;
+      void ins;
+    }
+  } catch { /* pre-0018 or transient — safe to skip */ }
+}
+
 // Active company members the caller can start a chat with.
 export async function listChatUsers() {
   const user = await getCurrentUser();
@@ -109,6 +164,7 @@ export async function listJobChats(jobId: string) {
   if (!user) return { error: "Unauthorized" };
   if (!(await jobInCompany(jobId, user.companyId))) return { error: "Not found" };
   const admin = isChatAdmin(user);
+  await releaseDueScheduled(user.companyId);
   // Presence: being on the job's chat list marks my participant rows "seen", so
   // others' messages show as delivered (✓✓) even before I open the thread.
   try {
@@ -261,6 +317,8 @@ export async function syncChat(chatId: string): Promise<{ data?: ChatSync; error
   const chat = await chatForUser(chatId, user);
   if (!chat) return { error: "Not found" };
 
+  await releaseDueScheduled(user.companyId);
+
   // Best-effort presence heartbeat (0017). Admins peeking aren't participants.
   if (chat.is_participant) {
     try { await sql`update public.job_chat_participants set last_seen_at = now() where chat_id = ${chatId} and user_id = ${user.id}`; } catch { /* pre-0017 */ }
@@ -337,6 +395,7 @@ export async function syncChat(chatId: string): Promise<{ data?: ChatSync; error
       createdAt: m.created_at,
       editedAt: m.edited_at ?? null,
       deleted: !!m.deleted_at,
+      important: false,
       replyTo: m.reply_to_id
         ? { id: m.reply_to_id, sender: m.reply_sender ?? null, body: m.reply_body ?? "", fileName: m.reply_file_name ?? null, deleted: !!m.reply_deleted }
         : null,
@@ -372,7 +431,92 @@ export async function syncChat(chatId: string): Promise<{ data?: ChatSync; error
     participants = pRows.map((p) => ({ id: p.id, name: p.name, lastReadAt: null, lastSeenAt: null }));
   }
 
-  return { data: { messages, participants, typing, me: user.id } };
+  // Flag important messages (0018) — separate query so the main fetch stays
+  // tier-agnostic.
+  try {
+    const imp = (await sql`select id from public.job_chat_messages where chat_id = ${chatId} and important = true`) as any[];
+    const ids = new Set(imp.map((r) => r.id));
+    for (const m of messages) if (ids.has(m.id)) m.important = true;
+  } catch { /* pre-0018 */ }
+
+  // My own pending scheduled messages for this chat (0018).
+  let scheduled: ScheduledMessage[] = [];
+  try {
+    const sRows = (await sql`
+      select id, body, file_name, important, scheduled_at
+      from public.job_chat_scheduled
+      where chat_id = ${chatId} and sender_id = ${user.id}
+      order by scheduled_at asc
+    `) as any[];
+    scheduled = sRows.map((s) => ({
+      id: s.id, body: s.body ?? "", fileName: s.file_name ?? null,
+      important: !!s.important, scheduledAt: s.scheduled_at,
+    }));
+  } catch { /* pre-0018 */ }
+
+  return { data: { messages, participants, typing, scheduled, me: user.id } };
+}
+
+// Cancel one of my own scheduled messages before it sends.
+export async function cancelScheduledMessage(scheduledId: string) {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Unauthorized" };
+  try {
+    await sql`delete from public.job_chat_scheduled where id = ${scheduledId} and sender_id = ${user.id} and company_id = ${user.companyId}`;
+    return { ok: true };
+  } catch (e) {
+    if (isMissingTable(e)) return { error: "Scheduling needs migration 0018." };
+    throw e;
+  }
+}
+
+// App-wide important alerts: flagged messages in my chats that I haven't
+// dismissed (excludes my own). Drives the on-screen banner on every page.
+export async function listImportantAlerts(): Promise<{ data: ImportantAlert[] }> {
+  const user = await getCurrentUser();
+  if (!user) return { data: [] };
+  await releaseDueScheduled(user.companyId);
+  try {
+    const rows = (await sql`
+      select m.id, m.body, m.file_name, m.created_at, m.chat_id, c.job_id,
+             coalesce(su.full_name, su.email) as sender_name, j.title as job_title
+      from public.job_chat_messages m
+      join public.job_chats c on c.id = m.chat_id
+      join public.jobs j on j.id = c.job_id
+      left join public.users su on su.id = m.sender_id
+      where m.company_id = ${user.companyId}
+        and m.important = true and m.deleted_at is null
+        and m.sender_id is distinct from ${user.id}
+        and m.created_at > now() - interval '30 days'
+        and (${isChatAdmin(user)} or exists (
+              select 1 from public.job_chat_participants p where p.chat_id = m.chat_id and p.user_id = ${user.id}))
+        and not exists (
+              select 1 from public.job_chat_alert_dismissals d where d.message_id = m.id and d.user_id = ${user.id})
+      order by m.created_at desc
+      limit 20
+    `) as any[];
+    return {
+      data: rows.map((r) => ({
+        id: r.id, body: r.body ?? "", fileName: r.file_name ?? null,
+        senderName: r.sender_name ?? null, jobId: r.job_id, jobTitle: r.job_title ?? null,
+        chatId: r.chat_id, createdAt: r.created_at,
+      })),
+    };
+  } catch {
+    return { data: [] };
+  }
+}
+
+export async function dismissAlert(messageId: string) {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Unauthorized" };
+  try {
+    await sql`insert into public.job_chat_alert_dismissals (message_id, user_id) values (${messageId}, ${user.id}) on conflict do nothing`;
+    return { ok: true };
+  } catch (e) {
+    if (isMissingTable(e)) return { ok: true };
+    throw e;
+  }
 }
 
 // Mark everything in a chat read up to now (called when the thread is open).
@@ -455,11 +599,14 @@ export async function deleteChatMessage(messageId: string) {
   }
 }
 
-// Post a message: text, a file, or both, optionally replying to another message.
+// Post a message: text, a file, or both, optionally replying, flagged important,
+// or scheduled to send later.
 export async function sendChatMessage(chatId: string, params: {
   body: string;
   file?: { url: string; name: string; contentType: string | null; sizeBytes: number | null } | null;
   replyToId?: string | null;
+  important?: boolean;
+  scheduledAt?: string | null;
 }) {
   const user = await getCurrentUser();
   if (!user) return { error: "Unauthorized" };
@@ -469,11 +616,38 @@ export async function sendChatMessage(chatId: string, params: {
   const body = (params.body ?? "").trim();
   const file = params.file ?? null;
   const replyToId = params.replyToId ?? null;
+  const important = params.important === true;
   if (!body && !file) return { error: "Message is empty." };
 
   if (file) {
     const publicBase = (process.env.R2_PUBLIC_URL || "").replace(/\/$/, "");
     if (!publicBase || !file.url.startsWith(`${publicBase}/`)) return { error: "Invalid file URL" };
+  }
+
+  // Scheduled send → queue in job_chat_scheduled; released when due.
+  if (params.scheduledAt) {
+    const when = new Date(params.scheduledAt);
+    if (isNaN(when.getTime())) return { error: "Invalid schedule time." };
+    if (when.getTime() < Date.now() + 30 * 1000) return { error: "Pick a time at least a minute from now." };
+    try {
+      const rows = (await sql`
+        insert into public.job_chat_scheduled
+          (company_id, chat_id, job_id, sender_id, body, file_url, file_name, file_type, file_size, reply_to_id, important, scheduled_at)
+        values (${user.companyId}, ${chatId}, ${chat.job_id}, ${user.id}, ${body},
+                ${file?.url ?? null}, ${file ? (file.name || "file").slice(0, 300) : null},
+                ${file?.contentType ?? null}, ${file?.sizeBytes ?? null}, ${replyToId}, ${important}, ${when.toISOString()})
+        returning id, scheduled_at
+      `) as any[];
+      await auditUser(user, { action: "chat.schedule", entity: "job", entityId: chat.job_id, detail: { chatId, scheduledAt: when.toISOString() } });
+      const scheduled: ScheduledMessage = {
+        id: rows[0].id, body, fileName: file ? (file.name || "file").slice(0, 300) : null,
+        important, scheduledAt: rows[0].scheduled_at,
+      };
+      return { data: { scheduled } };
+    } catch (e) {
+      if (isMissingTable(e)) return { error: "Scheduling needs migration 0018." };
+      throw e;
+    }
   }
 
   // Validate the reply target belongs to this chat (best-effort / guarded).
@@ -515,6 +689,12 @@ export async function sendChatMessage(chatId: string, params: {
   // Sending implies I've read up to now.
   try { await sql`update public.job_chat_participants set last_read_at = now(), last_seen_at = now(), typing_at = null where chat_id = ${chatId} and user_id = ${user.id}`; } catch { /* pre-0017 */ }
 
+  // Flag important (0018) — separate update keeps the insert tier-agnostic.
+  let importantSet = false;
+  if (important) {
+    try { await sql`update public.job_chat_messages set important = true where id = ${rows[0].id}`; importantSet = true; } catch { /* pre-0018 */ }
+  }
+
   let sharedFile: any = null;
   if (file) {
     const type = file.contentType ?? "";
@@ -543,6 +723,7 @@ export async function sendChatMessage(chatId: string, params: {
     createdAt: rows[0].created_at,
     editedAt: null,
     deleted: false,
+    important: importantSet,
     replyTo: replyPreview,
     reactions: [],
   };

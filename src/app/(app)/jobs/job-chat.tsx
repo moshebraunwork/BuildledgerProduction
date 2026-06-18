@@ -8,7 +8,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import {
   MessagesSquare, Plus, Send, Paperclip, X, Loader2, ChevronLeft, Download, Eye,
-  Check, CheckCheck, Reply, Pencil, Trash2, SmilePlus, MoreVertical, Info, Copy,
+  Check, CheckCheck, Reply, Pencil, Trash2, MoreVertical, Info, Copy,
+  AlertTriangle, Clock, CalendarClock,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
@@ -18,8 +19,8 @@ import {
 } from "@/components/ui/dialog";
 import {
   listJobChats, listChatUsers, createJobChat, syncChat, markChatRead, setTyping,
-  sendChatMessage, toggleReaction, editMessage, deleteChatMessage,
-  type ChatSummary, type ChatMessage, type ChatParticipantState,
+  sendChatMessage, toggleReaction, editMessage, deleteChatMessage, cancelScheduledMessage,
+  type ChatSummary, type ChatMessage, type ChatParticipantState, type ScheduledMessage,
 } from "./[id]/chat-actions";
 
 // Per-job chat: a list of conversations + the open thread. The thread polls
@@ -54,6 +55,12 @@ function initials(name: string | null) {
 }
 function chatTitle(chat: ChatSummary) {
   return chat.participants.map((p) => p.name).join(", ") || "Conversation";
+}
+// Min value for a <input type="datetime-local"> (a few minutes out), local tz.
+function minDateTimeLocal() {
+  const d = new Date(Date.now() + 2 * 60000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // Delivery/read state of one of MY messages, derived from participant state.
@@ -161,6 +168,7 @@ export function JobChat({ jobId, onFileShared }: { jobId: string; onFileShared?:
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [participants, setParticipants] = React.useState<ChatParticipantState[]>([]);
   const [typing, setTypingUsers] = React.useState<{ id: string; name: string }[]>([]);
+  const [scheduledMsgs, setScheduledMsgs] = React.useState<ScheduledMessage[]>([]);
   const [me, setMe] = React.useState("");
   const [loadingMessages, setLoadingMessages] = React.useState(false);
   const [draft, setDraft] = React.useState("");
@@ -169,6 +177,9 @@ export function JobChat({ jobId, onFileShared }: { jobId: string; onFileShared?:
   const [replyTo, setReplyTo] = React.useState<ChatMessage | null>(null);
   const [editing, setEditing] = React.useState<ChatMessage | null>(null);
   const [infoFor, setInfoFor] = React.useState<ChatMessage | null>(null);
+  const [important, setImportant] = React.useState(false);
+  const [scheduleAt, setScheduleAt] = React.useState("");
+  const [scheduleOpen, setScheduleOpen] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const composerRef = React.useRef<HTMLTextAreaElement>(null);
@@ -178,11 +189,12 @@ export function JobChat({ jobId, onFileShared }: { jobId: string; onFileShared?:
   const sync = React.useCallback(async (chatId: string, markRead: boolean) => {
     const res = await syncChat(chatId);
     if ("error" in res && res.error) return;
-    const data = (res as any).data as { messages: ChatMessage[]; participants: ChatParticipantState[]; typing: any[]; me: string };
+    const data = (res as any).data as { messages: ChatMessage[]; participants: ChatParticipantState[]; typing: any[]; scheduled: ScheduledMessage[]; me: string };
     if (!data) return;
     setMessages(data.messages);
     setParticipants(data.participants);
     setTypingUsers(data.typing ?? []);
+    setScheduledMsgs(data.scheduled ?? []);
     setMe(data.me);
     if (markRead) { markChatRead(chatId).catch(() => {}); }
   }, []);
@@ -249,11 +261,21 @@ export function JobChat({ jobId, onFileShared }: { jobId: string; onFileShared?:
         if (!up.ok) throw new Error(json.error || "Upload failed");
         file = { url: json.url, name: f.name, contentType: f.type || null, sizeBytes: f.size };
       }
-      const res = await sendChatMessage(openChat.id, { body, file, replyToId: replyTo?.id ?? null });
+      const res = await sendChatMessage(openChat.id, {
+        body, file, replyToId: replyTo?.id ?? null,
+        important, scheduledAt: scheduleAt ? new Date(scheduleAt).toISOString() : null,
+      });
       if (res.error || !res.data) throw new Error(res.error ?? "Failed to send");
-      setMessages((ms) => [...ms, res.data!.message]);
-      if (res.data.sharedFile && onFileShared) onFileShared(res.data.sharedFile);
+      const data = res.data as any;
+      if (data.scheduled) {
+        setScheduledMsgs((s) => [...s, data.scheduled as ScheduledMessage].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)));
+        toast({ title: "Message scheduled", description: new Date(data.scheduled.scheduledAt).toLocaleString() });
+      } else {
+        setMessages((ms) => [...ms, data.message]);
+        if (data.sharedFile && onFileShared) onFileShared(data.sharedFile);
+      }
       setDraft(""); setPendingFile(null); setReplyTo(null);
+      setImportant(false); setScheduleAt(""); setScheduleOpen(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (e: any) {
       toast({ title: "Couldn't send", description: e.message, variant: "destructive" });
@@ -286,6 +308,15 @@ export function JobChat({ jobId, onFileShared }: { jobId: string; onFileShared?:
 
   function startEdit(m: ChatMessage) { setEditing(m); setReplyTo(null); setDraft(m.body); setTimeout(() => composerRef.current?.focus(), 0); }
   function startReply(m: ChatMessage) { setReplyTo(m); setEditing(null); setTimeout(() => composerRef.current?.focus(), 0); }
+
+  async function cancelScheduled(s: ScheduledMessage) {
+    setScheduledMsgs((list) => list.filter((x) => x.id !== s.id));
+    const res = await cancelScheduledMessage(s.id);
+    if ((res as any).error) {
+      toast({ title: "Couldn't cancel", description: (res as any).error, variant: "destructive" });
+      if (openChat) sync(openChat.id, false);
+    }
+  }
 
   async function removeMessage(m: ChatMessage) {
     setMessages((ms) => ms.map((x) => (x.id === m.id ? { ...x, deleted: true, body: "", fileUrl: null, reactions: [] } : x)));
@@ -372,6 +403,12 @@ export function JobChat({ jobId, onFileShared }: { jobId: string; onFileShared?:
                       )}>
                         {groupStart && !m.mine && !m.deleted && (
                           <p className="text-[11px] font-semibold text-primary">{m.senderName ?? "Unknown"}</p>
+                        )}
+                        {m.important && !m.deleted && (
+                          <span className={cn("mb-0.5 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                            m.mine ? "bg-primary-foreground/20" : "bg-amber-500/20 text-amber-700 dark:text-amber-400")}>
+                            <AlertTriangle className="h-3 w-3" /> Important
+                          </span>
                         )}
                         {/* Reply quote */}
                         {m.replyTo && !m.deleted && (
@@ -461,6 +498,34 @@ export function JobChat({ jobId, onFileShared }: { jobId: string; onFileShared?:
               </React.Fragment>
             );
           })}
+
+          {/* My pending scheduled messages */}
+          {scheduledMsgs.length > 0 && (
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-center">
+                <span className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  <CalendarClock className="h-3.5 w-3.5" /> Scheduled
+                </span>
+              </div>
+              {scheduledMsgs.map((s) => (
+                <div key={s.id} className="flex justify-end">
+                  <div className="flex max-w-[82%] items-start gap-2 rounded-2xl rounded-br-sm border border-dashed border-primary/40 bg-primary/5 px-3.5 py-2">
+                    <div className="min-w-0">
+                      {s.important && (
+                        <span className="mb-0.5 inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400"><AlertTriangle className="h-3 w-3" /> Important</span>
+                      )}
+                      <p className="break-words text-[15px] leading-snug md:text-sm">{s.body || s.fileName || "Attachment"}</p>
+                      <p className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground"><Clock className="h-3 w-3" /> Sends {new Date(s.scheduledAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                    </div>
+                    <button type="button" onClick={() => cancelScheduled(s)} className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-accent" aria-label="Cancel scheduled message">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div ref={bottomRef} />
         </div>
 
@@ -482,6 +547,40 @@ export function JobChat({ jobId, onFileShared }: { jobId: string; onFileShared?:
               <button type="button" onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="rounded-full p-1 hover:bg-accent"><X className="h-3.5 w-3.5" /></button>
             </div>
           )}
+
+          {/* Send options: important + schedule (hidden while editing) */}
+          {!editing && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button type="button" onClick={() => setImportant((v) => !v)}
+                className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                  important ? "border-amber-500/50 bg-amber-500/15 text-amber-700 dark:text-amber-400" : "text-muted-foreground hover:bg-accent")}>
+                <AlertTriangle className="h-3.5 w-3.5" /> Important
+              </button>
+              <button type="button" onClick={() => setScheduleOpen((v) => !v)}
+                className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                  scheduleAt ? "border-primary/50 bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent")}>
+                <Clock className="h-3.5 w-3.5" /> {scheduleAt ? new Date(scheduleAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Schedule"}
+              </button>
+              {scheduleAt && (
+                <button type="button" onClick={() => { setScheduleAt(""); setScheduleOpen(false); }} className="rounded-full p-1 text-muted-foreground hover:bg-accent" aria-label="Clear schedule"><X className="h-3.5 w-3.5" /></button>
+              )}
+              {important && <span className="text-[11px] text-muted-foreground">Pops an alert for everyone until dismissed</span>}
+            </div>
+          )}
+          {scheduleOpen && !editing && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2">
+              <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <input
+                type="datetime-local"
+                value={scheduleAt}
+                min={minDateTimeLocal()}
+                onChange={(e) => setScheduleAt(e.target.value)}
+                className="flex-1 rounded-md border bg-background px-2 py-1.5 text-sm outline-none"
+              />
+              <Button size="sm" variant="outline" onClick={() => setScheduleOpen(false)}>Done</Button>
+            </div>
+          )}
+
           <div className="flex items-end gap-2">
             {!editing && (
               <label aria-label="Attach file" className="flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors active:bg-accent md:h-11 md:w-11">
@@ -498,9 +597,10 @@ export function JobChat({ jobId, onFileShared }: { jobId: string; onFileShared?:
               rows={1}
               className="max-h-32 min-h-[48px] flex-1 resize-none rounded-3xl bg-muted px-4 py-3 text-[15px] md:min-h-[44px]"
             />
-            <button type="button" disabled={sending || (!draft.trim() && !pendingFile)} onClick={handleSend} aria-label="Send"
+            <button type="button" disabled={sending || (!draft.trim() && !pendingFile)} onClick={handleSend}
+              aria-label={scheduleAt ? "Schedule send" : "Send"}
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-transform active:scale-95 disabled:opacity-40 md:h-11 md:w-11">
-              {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : editing ? <Check className="h-5 w-5" /> : <Send className="h-5 w-5" />}
+              {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : editing ? <Check className="h-5 w-5" /> : scheduleAt ? <Clock className="h-5 w-5" /> : <Send className="h-5 w-5" />}
             </button>
           </div>
         </div>
