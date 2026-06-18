@@ -40,7 +40,7 @@ export function AppHeader({ companyName }: { companyName: string }) {
   const current = labelFor(pathname);
 
   return (
-    <header className="hidden h-12 shrink-0 items-center gap-3 border-b bg-card/60 px-4 backdrop-blur md:flex">
+    <header className="relative z-30 hidden h-12 shrink-0 items-center gap-3 border-b bg-card/60 px-4 backdrop-blur md:flex">
       <nav className="flex min-w-0 items-center gap-2 font-mono text-xs text-muted-foreground">
         <span className="truncate">{companyName}</span>
         <span className="opacity-50">/</span>
