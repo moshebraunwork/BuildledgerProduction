@@ -19,6 +19,8 @@ export interface CurrentUser {
   theme: string;
   permissions: PermissionMap;
   requireLocation: boolean;
+  fontScaleDesktop: string;
+  fontScaleMobile: string;
 }
 
 // Ensures a profile row exists in Neon for the signed-in Clerk user.
@@ -106,6 +108,8 @@ async function getDemoGuest(): Promise<CurrentUser> {
     theme: "system",
     permissions: {},
     requireLocation: false,
+    fontScaleDesktop: "md",
+    fontScaleMobile: "md",
   };
 }
 
@@ -155,6 +159,18 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     }
   }
 
+  // Per-account font scale (added in migration 0016). Queried separately +
+  // guarded so a database that hasn't run 0016 yet still authenticates.
+  let fontScaleDesktop = "md";
+  let fontScaleMobile = "md";
+  try {
+    const fs = await sql`select font_scale_desktop, font_scale_mobile from public.users where id = ${p.id} limit 1`;
+    fontScaleDesktop = fs[0]?.font_scale_desktop ?? "md";
+    fontScaleMobile = fs[0]?.font_scale_mobile ?? "md";
+  } catch {
+    /* columns not present yet — use defaults */
+  }
+
   return {
     id: p.id,
     clerkUserId: p.clerk_user_id,
@@ -167,6 +183,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     theme: p.theme ?? "system",
     permissions: (p.role_permissions as PermissionMap) ?? {},
     requireLocation,
+    fontScaleDesktop,
+    fontScaleMobile,
   };
 }
 

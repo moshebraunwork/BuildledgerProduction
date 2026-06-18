@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { can, type PermissionMap } from "@/lib/permissions";
 import { saveTheme, recordSignOut } from "@/app/(app)/actions";
 import { NAV } from "@/components/nav-items";
-import { HardHat, Menu, X, Monitor, Moon, Sun, LogOut, User as UserIcon, Search } from "lucide-react";
+import { HardHat, Menu, X, Monitor, Moon, Sun, LogOut, User as UserIcon, Command } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useCommandPalette } from "@/components/command-palette";
 
@@ -56,9 +56,9 @@ export function MobileNav({
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
 
-  // The dashboard is desktop-only; on phones the jobs list is home.
+  // The dashboard and the whole Admin area are desktop-only on phones.
   const visible = NAV
-    .filter((n) => n.href !== "/dashboard")
+    .filter((n) => n.href !== "/dashboard" && n.href !== "/admin")
     .filter((n) => n.perm === "" || can(isSuperadmin, permissions, n.perm))
     .map((n) =>
       n.children
@@ -106,14 +106,14 @@ export function MobileNav({
           </div>
           <span className="bg-gradient-to-r from-primary to-violet-500 bg-clip-text font-semibold text-transparent dark:from-foreground dark:to-violet-300">BuildLedger</span>
         </div>
-        {/* Global search → command palette */}
+        {/* Command menu (⌘K) */}
         <button
           type="button"
           onClick={openPalette}
           className="ml-auto flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          aria-label="Search"
+          aria-label="Command menu"
         >
-          <Search className="h-5 w-5" />
+          <Command className="h-5 w-5" />
         </button>
         {/* Quick profile shortcut on the right — mirrors the desktop sidebar avatar */}
         <Link href="/settings" aria-label="My settings">

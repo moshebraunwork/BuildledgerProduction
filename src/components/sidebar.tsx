@@ -11,7 +11,7 @@ import { saveTheme } from "@/app/(app)/actions";
 import { NAV } from "@/components/nav-items";
 import {
   HardHat, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, Monitor, Moon, Sun, LogOut, User as UserIcon, Sparkles, Search,
+  ChevronDown, ChevronUp, Monitor, Moon, Sun, LogOut, User as UserIcon, Sparkles, Command,
 } from "lucide-react";
 import { useAskAi } from "@/components/ask-ai/ask-ai-context";
 import { useCommandPalette } from "@/components/command-palette";
@@ -122,16 +122,16 @@ export function Sidebar({
         <button
           type="button"
           onClick={openPalette}
-          title={collapsed ? "Search (⌘K)" : undefined}
+          title={collapsed ? "Command menu (⌘K)" : undefined}
           className={cn(
             "flex w-full items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
             collapsed && "justify-center px-2"
           )}
         >
-          <Search className="h-4 w-4 shrink-0" />
+          <Command className="h-4 w-4 shrink-0" />
           {!collapsed && (
             <>
-              <span className="flex-1 text-left text-xs">Search…</span>
+              <span className="flex-1 text-left text-xs">Command menu…</span>
               <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>
             </>
           )}

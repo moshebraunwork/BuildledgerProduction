@@ -15,6 +15,8 @@ function userWith(perms: Record<string, boolean>, isSuperadmin = false): Current
     theme: "system",
     permissions: perms,
     requireLocation: false,
+    fontScaleDesktop: "md",
+    fontScaleMobile: "md",
   };
 }
 

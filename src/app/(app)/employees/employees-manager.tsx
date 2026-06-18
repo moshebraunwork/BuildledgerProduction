@@ -71,6 +71,16 @@ export function EmployeesManager({
   const [toDelete, setToDelete] = React.useState<Employee | null>(null);
   const [hover, setHover] = React.useState<{ id: string; source: "table" | "map" } | null>(null);
   const [mobileView, setMobileView] = React.useState<"list" | "map">("list");
+  // Remember the last view mode across visits.
+  React.useEffect(() => {
+    try {
+      const mv = window.localStorage.getItem("buildledger.employees.mobileView");
+      if (mv === "list" || mv === "map") setMobileView(mv);
+    } catch { /* ignore */ }
+  }, []);
+  React.useEffect(() => {
+    try { window.localStorage.setItem("buildledger.employees.mobileView", mobileView); } catch {}
+  }, [mobileView]);
 
   const roleName = React.useMemo(() => {
     const m: Record<string, string> = {};

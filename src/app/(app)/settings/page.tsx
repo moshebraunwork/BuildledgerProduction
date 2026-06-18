@@ -10,7 +10,12 @@ export default async function SettingsPage() {
   return (
     <>
       <PageHeader title="My settings" description="Your personal preferences." />
-      <UserSettingsForm theme={user.theme} fullName={user.fullName} />
+      <UserSettingsForm
+        theme={user.theme}
+        fullName={user.fullName}
+        fontScaleDesktop={user.fontScaleDesktop}
+        fontScaleMobile={user.fontScaleMobile}
+      />
     </>
   );
 }

@@ -5,10 +5,25 @@ import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { auditUser, diff } from "@/lib/audit";
 
-export async function saveProfile(fullName: string, theme: string) {
+export async function saveProfile(
+  fullName: string,
+  theme: string,
+  fontScaleDesktop?: string,
+  fontScaleMobile?: string,
+) {
   const user = await getCurrentUser();
   if (!user) return { error: "Unauthorized" };
   await sql`update public.users set full_name = ${fullName}, theme = ${theme} where id = ${user.id}`;
+  // Font scale columns arrive with migration 0016 — guard so older databases
+  // still save the name/theme.
+  if (fontScaleDesktop || fontScaleMobile) {
+    const allowed = ["sm", "md", "lg", "xl"];
+    const d = allowed.includes(fontScaleDesktop ?? "") ? fontScaleDesktop : "md";
+    const m = allowed.includes(fontScaleMobile ?? "") ? fontScaleMobile : "md";
+    try {
+      await sql`update public.users set font_scale_desktop = ${d}, font_scale_mobile = ${m} where id = ${user.id}`;
+    } catch { /* not migrated yet */ }
+  }
   // Record the name change (theme is cosmetic; only log it when the name moves).
   if ((user.fullName ?? "") !== fullName) {
     await auditUser(user, {

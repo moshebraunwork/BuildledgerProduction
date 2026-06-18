@@ -248,8 +248,7 @@
   .ws-fade, .ws-pulse, .ws-grow { animation: none; }
 }
 
-/* Monospace helper that prefers JetBrains Mono (loaded in the root layout). */
+/* Legacy helper — now the same single UI typeface as everything else. */
 .font-jb {
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
-    Consolas, "Liberation Mono", monospace;
+  font-family: inherit;
 }

@@ -2,11 +2,14 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Search, Contact } from "lucide-react";
-import { fmtMoney, cn } from "@/lib/utils";
+import { Search, Contact, Mail, MapPin, Hammer, FileText } from "lucide-react";
+import { fmtMoney, fmtDate, cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
+import { SlideOver } from "@/components/slide-over";
+import { getCustomerDetail, type CustomerDetail } from "./actions";
 
 export interface Customer {
   name: string;
@@ -46,10 +49,22 @@ function shortMoney(n: number) {
 export function CustomersManager({ customers }: { customers: Customer[] }) {
   const router = useRouter();
   const [q, setQ] = React.useState("");
+  const [selected, setSelected] = React.useState<Customer | null>(null);
+  const [detail, setDetail] = React.useState<CustomerDetail | null>(null);
+  const [loading, setLoading] = React.useState(false);
 
   const ql = q.trim().toLowerCase();
   const filtered = customers.filter((c) => !ql || `${c.name} ${c.email ?? ""}`.toLowerCase().includes(ql));
   const active = customers.filter((c) => c.tag === "ACTIVE" || c.tag === "VIP").length;
+
+  async function openCustomer(c: Customer) {
+    setSelected(c);
+    setDetail(null);
+    setLoading(true);
+    const res = await getCustomerDetail(c.name);
+    setDetail(res.data ?? null);
+    setLoading(false);
+  }
 
   return (
     <>
@@ -80,7 +95,7 @@ export function CustomersManager({ customers }: { customers: Customer[] }) {
             <button
               key={c.name}
               type="button"
-              onClick={() => router.push(`/jobs?q=${encodeURIComponent(c.name)}`)}
+              onClick={() => openCustomer(c)}
               className="flex flex-col gap-3 rounded-xl border bg-card p-4 text-left shadow-sm transition-all hover:shadow-md md:hover:-translate-y-0.5"
             >
               <div className="flex items-center gap-3">
@@ -100,7 +115,111 @@ export function CustomersManager({ customers }: { customers: Customer[] }) {
           ))}
         </div>
       )}
+
+      {/* Customer detail — contact, jobs, invoices */}
+      <SlideOver
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        title={selected?.name ?? "Customer"}
+        width="lg"
+        footer={
+          selected ? (
+            <div className="flex justify-between gap-2">
+              <Button variant="outline" onClick={() => router.push(`/jobs?q=${encodeURIComponent(selected.name)}`)}>
+                <Hammer className="h-4 w-4" /> Open in Jobs
+              </Button>
+              <Button onClick={() => setSelected(null)}>Done</Button>
+            </div>
+          ) : undefined
+        }
+      >
+        {!selected ? null : loading && !detail ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+        ) : detail ? (
+          <div className="space-y-6">
+            {/* Summary */}
+            <div className="grid grid-cols-3 gap-3">
+              <SummaryStat label="Jobs" value={String(selected.jobs)} />
+              <SummaryStat label="LTV" value={shortMoney(selected.ltv)} />
+              <SummaryStat label="Open" value={String(selected.openJobs)} />
+            </div>
+
+            {/* Contact */}
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold">Contact</h3>
+              {detail.emails.length === 0 && detail.addresses.length === 0 && (
+                <p className="text-sm text-muted-foreground">No contact details on file.</p>
+              )}
+              {detail.emails.map((e) => (
+                <a key={e} href={`mailto:${e}`} className="flex items-center gap-2 text-sm text-foreground hover:text-primary">
+                  <Mail className="h-4 w-4 text-muted-foreground" /> {e}
+                </a>
+              ))}
+              {detail.addresses.map((a) => (
+                <p key={a} className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <MapPin className="h-4 w-4" /> {a}
+                </p>
+              ))}
+            </section>
+
+            {/* Jobs */}
+            <section className="space-y-2">
+              <h3 className="flex items-center gap-2 text-sm font-semibold"><Hammer className="h-4 w-4 text-muted-foreground" /> Jobs ({detail.jobs.length})</h3>
+              {detail.jobs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No jobs yet.</p>
+              ) : (
+                <ul className="divide-y rounded-lg border">
+                  {detail.jobs.map((j) => (
+                    <li key={j.id}>
+                      <button type="button" onClick={() => router.push(`/jobs/${j.id}`)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-accent">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{j.title}</p>
+                          <p className="text-xs text-muted-foreground">{j.scheduled_date ? fmtDate(j.scheduled_date) : "Unscheduled"} · {j.status}</p>
+                        </div>
+                        {j.estimate > 0 && <span className="shrink-0 text-sm tabular-nums">{fmtMoney(j.estimate)}</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            {/* Invoices */}
+            <section className="space-y-2">
+              <h3 className="flex items-center gap-2 text-sm font-semibold"><FileText className="h-4 w-4 text-muted-foreground" /> Invoices ({detail.invoices.length})</h3>
+              {detail.invoices.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No invoices yet.</p>
+              ) : (
+                <ul className="divide-y rounded-lg border">
+                  {detail.invoices.map((inv) => (
+                    <li key={inv.id}>
+                      <button type="button" onClick={() => router.push("/invoices")} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-accent">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">#{inv.number}</p>
+                          <p className="text-xs capitalize text-muted-foreground">{inv.status} · {fmtDate(inv.created_at)}</p>
+                        </div>
+                        <span className="shrink-0 text-sm tabular-nums">{fmtMoney(inv.total)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+        ) : (
+          <p className="py-8 text-center text-sm text-muted-foreground">Could not load customer.</p>
+        )}
+      </SlideOver>
     </>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mt-1 font-mono text-lg font-semibold">{value}</div>
+    </div>
   );
 }
 

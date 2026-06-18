@@ -14,7 +14,12 @@ function grantedPerms(permissions: PermissionMap): string[] {
     .sort();
 }
 
-export async function createRole(name: string, permissions: PermissionMap, requireLocation = false) {
+export async function createRole(
+  name: string,
+  permissions: PermissionMap,
+  requireLocation = false,
+  notificationPrefs: Record<string, boolean> = {},
+) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "admin.roles")) return { error: "Forbidden" };
   const json = JSON.stringify(permissions);
@@ -34,6 +39,11 @@ export async function createRole(name: string, permissions: PermissionMap, requi
       returning *
     `) as any[];
   }
+  // Notification prefs (migration 0016) — set separately + guarded.
+  try {
+    await sql`update public.roles set notification_prefs = ${JSON.stringify(notificationPrefs)}::jsonb where id = ${rows[0].id}`;
+    rows[0].notification_prefs = notificationPrefs;
+  } catch { /* not migrated yet */ }
   await auditUser(user, {
     action: "role.create", entity: "role", entityId: rows[0].id,
     detail: { name, permissions: grantedPerms(permissions), requireLocation },
@@ -41,7 +51,13 @@ export async function createRole(name: string, permissions: PermissionMap, requi
   return { data: rows[0] };
 }
 
-export async function updateRole(id: string, name: string, permissions: PermissionMap, requireLocation = false) {
+export async function updateRole(
+  id: string,
+  name: string,
+  permissions: PermissionMap,
+  requireLocation = false,
+  notificationPrefs: Record<string, boolean> = {},
+) {
   const user = await getCurrentUser();
   if (!user || !can(user.isSuperadmin, user.permissions, "admin.roles")) return { error: "Forbidden" };
   const beforeRows = await sql`select name, permissions from public.roles where id = ${id} and company_id = ${user.companyId} limit 1`;
@@ -58,6 +74,9 @@ export async function updateRole(id: string, name: string, permissions: Permissi
       where id = ${id} and company_id = ${user.companyId}
     `;
   }
+  try {
+    await sql`update public.roles set notification_prefs = ${JSON.stringify(notificationPrefs)}::jsonb where id = ${id} and company_id = ${user.companyId}`;
+  } catch { /* not migrated yet */ }
   const before = beforeRows[0]?.permissions ? grantedPerms(beforeRows[0].permissions as PermissionMap) : [];
   const after = grantedPerms(permissions);
   await auditUser(user, {
