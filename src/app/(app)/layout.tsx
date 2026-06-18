@@ -13,6 +13,7 @@ import { LocationTracker } from "@/components/location/location-tracker";
 import { CommandPaletteProvider } from "@/components/command-palette";
 import { AppHeader } from "@/components/app-header";
 import { ApplyFontScale } from "@/components/apply-font-scale";
+import { ImportantAlerts } from "@/components/important-alerts";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -99,6 +100,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="flex h-[100dvh] overflow-hidden">
           <ApplyTheme theme={user.theme} />
           <ApplyFontScale desktop={user.fontScaleDesktop} mobile={user.fontScaleMobile} />
+          <ImportantAlerts />
           {/* Location-required roles are tracked + gated here (superadmin exempt). */}
           <LocationTracker required={user.requireLocation && !user.isSuperadmin} />
           <Sidebar
