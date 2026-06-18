@@ -11,9 +11,10 @@ import { saveTheme } from "@/app/(app)/actions";
 import { NAV } from "@/components/nav-items";
 import {
   HardHat, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, Monitor, Moon, Sun, LogOut, User as UserIcon, Sparkles,
+  ChevronDown, ChevronUp, Monitor, Moon, Sun, LogOut, User as UserIcon, Sparkles, Search,
 } from "lucide-react";
 import { useAskAi } from "@/components/ask-ai/ask-ai-context";
+import { useCommandPalette } from "@/components/command-palette";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -23,18 +24,20 @@ import {
 const COLLAPSED_KEY = "buildledger.sidebar.collapsed";
 
 export function Sidebar({
-  isSuperadmin, permissions, email, fullName,
+  isSuperadmin, permissions, email, fullName, badges = {},
 }: {
   isSuperadmin: boolean;
   permissions: PermissionMap;
   email: string;
   fullName: string | null;
+  badges?: Record<string, number>;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const { setTheme } = useTheme();
   const { signOut } = useClerk();
   const { openPanel, canUse: canUseAi } = useAskAi();
+  const { open: openPalette } = useCommandPalette();
 
   const [collapsed, setCollapsed] = React.useState(false);
   // Restore collapsed state from localStorage on mount
@@ -114,6 +117,27 @@ export function Sidebar({
         </button>
       )}
 
+      {/* Command palette launcher */}
+      <div className="px-2 pt-2">
+        <button
+          type="button"
+          onClick={openPalette}
+          title={collapsed ? "Search (⌘K)" : undefined}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+            collapsed && "justify-center px-2"
+          )}
+        >
+          <Search className="h-4 w-4 shrink-0" />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left text-xs">Search…</span>
+              <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>
+            </>
+          )}
+        </button>
+      </div>
+
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto p-2 space-y-1">
         {visible.map((item) => {
@@ -180,7 +204,15 @@ export function Sidebar({
             >
               {active && !collapsed && <span className="absolute inset-y-1 left-0 w-1 rounded-r-full bg-gradient-to-b from-primary to-violet-500 shadow-[0_0_8px_hsl(var(--primary)/0.5)]" />}
               <Icon className={cn("h-4 w-4 shrink-0 transition-transform", active && "scale-110")} />
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+              {!collapsed && badges[item.href] > 0 && (
+                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
+                  {badges[item.href]}
+                </span>
+              )}
+              {!collapsed && item.shortcut && !(badges[item.href] > 0) && (
+                <span className="font-mono text-[10px] text-muted-foreground/70">{item.shortcut}</span>
+              )}
             </Link>
           );
         })}

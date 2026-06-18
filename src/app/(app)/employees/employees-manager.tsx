@@ -133,6 +133,12 @@ export function EmployeesManager({
 
   const searchParams = useSearchParams();
   React.useEffect(() => {
+    // Open the add/invite editor when arrived via ⌘K / "Invite team member".
+    if (searchParams.get("new") === "1" && canEdit) {
+      startNew();
+      router.replace("/employees");
+      return;
+    }
     const id = searchParams.get("employee");
     if (!id) return;
     const emp = employees.find((e) => e.id === id);

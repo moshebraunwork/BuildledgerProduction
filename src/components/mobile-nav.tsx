@@ -9,8 +9,9 @@ import { cn } from "@/lib/utils";
 import { can, type PermissionMap } from "@/lib/permissions";
 import { saveTheme, recordSignOut } from "@/app/(app)/actions";
 import { NAV } from "@/components/nav-items";
-import { HardHat, Menu, X, Monitor, Moon, Sun, LogOut, User as UserIcon } from "lucide-react";
+import { HardHat, Menu, X, Monitor, Moon, Sun, LogOut, User as UserIcon, Search } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useCommandPalette } from "@/components/command-palette";
 
 // Mobile top bar + slide-in drawer. Hidden on md+ where the desktop sidebar
 // takes over. Fills the gap where small screens previously had no navigation.
@@ -26,6 +27,7 @@ export function MobileNav({
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const { signOut } = useClerk();
+  const { open: openPalette } = useCommandPalette();
   const [open, setOpen] = React.useState(false);
 
   async function persistTheme(next: string) {
@@ -104,8 +106,17 @@ export function MobileNav({
           </div>
           <span className="bg-gradient-to-r from-primary to-violet-500 bg-clip-text font-semibold text-transparent dark:from-foreground dark:to-violet-300">BuildLedger</span>
         </div>
+        {/* Global search → command palette */}
+        <button
+          type="button"
+          onClick={openPalette}
+          className="ml-auto flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          aria-label="Search"
+        >
+          <Search className="h-5 w-5" />
+        </button>
         {/* Quick profile shortcut on the right — mirrors the desktop sidebar avatar */}
-        <Link href="/settings" className="ml-auto" aria-label="My settings">
+        <Link href="/settings" aria-label="My settings">
           <Avatar className="h-8 w-8 ring-2 ring-primary/20 ring-offset-1 ring-offset-card">
             <AvatarFallback className="bg-gradient-to-br from-primary/15 to-violet-500/15 text-xs text-foreground">{initials}</AvatarFallback>
           </Avatar>
